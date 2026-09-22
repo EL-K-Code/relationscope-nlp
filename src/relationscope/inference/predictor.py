@@ -59,6 +59,28 @@ class RelationPredictor:
             max_length=self.max_length,
         )
 
+    def _input_text(self, text: str, head: EntitySpan, tail: EntitySpan) -> str:
+        if self.model.input_view == "marked":
+            return mark_character_spans(text, head, tail)
+        return text
+
+    def _model_inputs(
+        self,
+        encoded: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        inputs = {
+            "input_ids": encoded["input_ids"],
+            "attention_mask": encoded["attention_mask"],
+        }
+        if self.model.pooling_mode == "entity_pair":
+            head_pos, tail_pos = marker_positions(
+                encoded["input_ids"],
+                self.tokenizer,
+            )
+            inputs["head_pos"] = head_pos
+            inputs["tail_pos"] = tail_pos
+        return inputs
+
     def _decode_row(
         self,
         probabilities: torch.Tensor,
@@ -90,33 +112,23 @@ class RelationPredictor:
         top_k: int,
     ) -> PredictResponse:
         start_time = time.perf_counter()
-        marked = mark_character_spans(text, head, tail)
+        model_text = self._input_text(text, head, tail)
 
         encoded = self.tokenizer(
-            marked,
+            model_text,
             return_tensors="pt",
             truncation=True,
             max_length=self.max_length,
         )
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
-        head_pos, tail_pos = marker_positions(
-            encoded["input_ids"],
-            self.tokenizer,
-        )
-
-        logits = self.model(
-            encoded["input_ids"],
-            encoded["attention_mask"],
-            head_pos,
-            tail_pos,
-        )
+        logits = self.model(**self._model_inputs(encoded))
         predictions = self._decode_row(torch.softmax(logits[0], dim=-1), top_k=top_k)
 
         latency_ms = (time.perf_counter() - start_time) * 1000
         return PredictResponse(
             head=head.text,
             tail=tail.text,
-            marked_text=marked,
+            marked_text=model_text,
             predictions=predictions,
             latency_ms=latency_ms,
             model_id=self.model_id,
@@ -131,41 +143,31 @@ class RelationPredictor:
     ) -> BatchPredictResponse:
         start_time = time.perf_counter()
 
-        marked_texts = [
-            mark_character_spans(example.text, example.head, example.tail)
+        model_texts = [
+            self._input_text(example.text, example.head, example.tail)
             for example in examples
         ]
         encoded = self.tokenizer(
-            marked_texts,
+            model_texts,
             return_tensors="pt",
             padding=True,
             truncation=True,
             max_length=self.max_length,
         )
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
-        head_pos, tail_pos = marker_positions(
-            encoded["input_ids"],
-            self.tokenizer,
-        )
-
-        logits = self.model(
-            encoded["input_ids"],
-            encoded["attention_mask"],
-            head_pos,
-            tail_pos,
-        )
+        logits = self.model(**self._model_inputs(encoded))
         probabilities = torch.softmax(logits, dim=-1)
 
         items = [
             PredictionItem(
                 head=example.head.text,
                 tail=example.tail.text,
-                marked_text=marked,
+                marked_text=model_text,
                 predictions=self._decode_row(row, top_k=top_k),
             )
-            for example, marked, row in zip(
+            for example, model_text, row in zip(
                 examples,
-                marked_texts,
+                model_texts,
                 probabilities,
                 strict=True,
             )
