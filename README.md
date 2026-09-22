@@ -36,6 +36,48 @@ Core tasks:
 - batch knowledge-triple extraction;
 - later: abstention / unknown-relation detection.
 
+## Notebook lineage
+
+RelationScope preserves the original ENSAI experimental path instead of hiding it behind the production Transformer.
+
+Install the optional legacy stack:
+
+```bash
+uv sync --all-groups --extra legacy
+```
+
+Reproduce the original seven-relation LSTM classification experiment:
+
+```bash
+uv run python scripts/reproduce_notebook_lstm.py
+```
+
+Reproduce the LSTM encoder-decoder with attention:
+
+```bash
+uv run python scripts/reproduce_notebook_attention.py
+```
+
+Reproduce the scaling study from 7 to 30 relations:
+
+```bash
+uv run python scripts/reproduce_notebook_scaling.py
+```
+
+Reproduce T5 exactly with the notebook's 32-token target cap:
+
+```bash
+uv run python scripts/reproduce_notebook_t5.py --legacy-target-length
+```
+
+Run the corrected T5 experiment without intentionally truncating relation labels:
+
+```bash
+uv run python scripts/reproduce_notebook_t5.py
+```
+
+See `docs/notebook_lineage.md` for the exact mapping from the ENSAI lab to the production project.
+
 ## Benchmark protocol
 
 FewRel 1.0 officially uses **64 training relations + 16 disjoint validation relations** for few-shot evaluation. RelationScope does **not** claim leaderboard comparability with that protocol.
