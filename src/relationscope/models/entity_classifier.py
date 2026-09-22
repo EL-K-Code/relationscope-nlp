@@ -1,9 +1,10 @@
-"""Entity-aware Transformer relation classifier."""
+"""Transformer relation classifiers used by RelationScope."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import torch
 from torch import nn
@@ -11,9 +12,12 @@ from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerBase
 
 from relationscope.constants import ENTITY_MARKERS, HEAD_START, TAIL_START
 
+PoolingMode = Literal["cls", "entity_pair"]
+InputView = Literal["raw", "marked"]
+
 
 class EntityAwareRelationClassifier(nn.Module):
-    """Pool CLS, HEAD, TAIL and |HEAD-TAIL| representations before classification."""
+    """Transformer classifier with configurable entity-aware pooling."""
 
     def __init__(
         self,
@@ -21,28 +25,52 @@ class EntityAwareRelationClassifier(nn.Module):
         num_labels: int,
         *,
         dropout: float = 0.2,
+        pooling_mode: PoolingMode = "entity_pair",
+        input_view: InputView = "marked",
     ) -> None:
         super().__init__()
+        if pooling_mode not in {"cls", "entity_pair"}:
+            raise ValueError(f"unsupported pooling mode: {pooling_mode}")
+        if input_view not in {"raw", "marked"}:
+            raise ValueError(f"unsupported input view: {input_view}")
+        if pooling_mode == "entity_pair" and input_view != "marked":
+            raise ValueError("entity_pair pooling requires marked input")
+
+        self.pooling_mode = pooling_mode
+        self.input_view = input_view
+        self.dropout_probability = float(dropout)
+
         self.encoder = AutoModel.from_pretrained(model_name_or_path)
         hidden = int(self.encoder.config.hidden_size)
+        feature_size = hidden if pooling_mode == "cls" else hidden * 4
+
         self.dropout = nn.Dropout(dropout)
-        self.classifier = nn.Linear(hidden * 4, num_labels)
+        self.classifier = nn.Linear(feature_size, num_labels)
 
     def forward(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        head_pos: torch.Tensor,
-        tail_pos: torch.Tensor,
+        head_pos: torch.Tensor | None = None,
+        tail_pos: torch.Tensor | None = None,
     ) -> torch.Tensor:
         outputs = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
         hidden = outputs.last_hidden_state
-        batch = torch.arange(hidden.shape[0], device=hidden.device)
-
         cls = hidden[:, 0]
-        head = hidden[batch, head_pos]
-        tail = hidden[batch, tail_pos]
-        features = torch.cat([cls, head, tail, torch.abs(head - tail)], dim=-1)
+
+        if self.pooling_mode == "cls":
+            features = cls
+        else:
+            if head_pos is None or tail_pos is None:
+                raise ValueError("entity_pair pooling requires HEAD and TAIL positions")
+            batch = torch.arange(hidden.shape[0], device=hidden.device)
+            head = hidden[batch, head_pos]
+            tail = hidden[batch, tail_pos]
+            features = torch.cat(
+                [cls, head, tail, torch.abs(head - tail)],
+                dim=-1,
+            )
+
         return self.classifier(self.dropout(features))
 
     def save_bundle(
@@ -57,6 +85,7 @@ class EntityAwareRelationClassifier(nn.Module):
         self.encoder.save_pretrained(output_dir / "encoder")
         tokenizer.save_pretrained(output_dir / "tokenizer")
         torch.save(self.classifier.state_dict(), output_dir / "classifier.pt")
+
         (output_dir / "relations.json").write_text(
             json.dumps(label_map, indent=2, ensure_ascii=False),
             encoding="utf-8",
@@ -64,10 +93,13 @@ class EntityAwareRelationClassifier(nn.Module):
         (output_dir / "model_config.json").write_text(
             json.dumps(
                 {
-                    "architecture": "entity-aware-transformer",
+                    "architecture": "transformer-relation-classifier",
                     "base_model": base_model,
                     "num_labels": len(label_map),
                     "markers": ENTITY_MARKERS,
+                    "pooling_mode": self.pooling_mode,
+                    "input_view": self.input_view,
+                    "dropout": self.dropout_probability,
                 },
                 indent=2,
             ),
@@ -88,13 +120,31 @@ class EntityAwareRelationClassifier(nn.Module):
         label_map = json.loads(
             (bundle_dir / "relations.json").read_text(encoding="utf-8")
         )
-        model = cls(str(bundle_dir / "encoder"), num_labels=len(label_map))
+
+        config_path = bundle_dir / "model_config.json"
+        config = (
+            json.loads(config_path.read_text(encoding="utf-8"))
+            if config_path.exists()
+            else {}
+        )
+        pooling_mode = config.get("pooling_mode", "entity_pair")
+        input_view = config.get("input_view", "marked")
+        dropout = float(config.get("dropout", 0.2))
+
+        model = cls(
+            str(bundle_dir / "encoder"),
+            num_labels=len(label_map),
+            pooling_mode=pooling_mode,
+            input_view=input_view,
+            dropout=dropout,
+        )
         classifier_state = torch.load(
             bundle_dir / "classifier.pt",
             map_location=device,
             weights_only=True,
         )
         model.classifier.load_state_dict(classifier_state)
+
         tokenizer = AutoTokenizer.from_pretrained(bundle_dir / "tokenizer")
         model.to(device)
         model.eval()
