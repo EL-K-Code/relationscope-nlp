@@ -2,237 +2,325 @@
 
 **Production-grade Relation Extraction & Knowledge Structuring Engine**
 
-RelationScope turns entity-marked natural-language text into calibrated relation predictions and machine-readable knowledge triples.
+RelationScope turns text + an explicit entity pair into a ranked relation prediction, calibrated confidence, optional `UNKNOWN_RELATION` abstention, machine-readable triples and token-level evidence.
 
-The project grows out of an ENSAI Advanced NLP lab on FewRel (LSTM, attention, T5), but the production code is a clean-room rewrite with a corrected evaluation protocol, reproducible baselines, tests, an API, and a path to GCP deployment.
+The project is the engineering continuation of an ENSAI Advanced NLP lab by **Maxime Ferret and Alex Komla Labou**. The original experimental path is preserved instead of being hidden behind a modern Transformer.
 
-## What the system does
+> **Current status:** the full software and experiment scaffolding is implemented. Model-training and benchmark runs are intentionally pending. No new portfolio metric is claimed before reproduction.
 
-Input:
+## Research story
 
 ```text
-Marie Curie was born in Warsaw in 1867.
-HEAD = Marie Curie
-TAIL = Warsaw
+ENSAI notebook
+     |
+     +--> LSTM classification
+     |
+     +--> Seq2Seq + Attention
+     |
+     +--> T5 generation
+     |
+     +--> K=7 -> 30 scaling study
+                |
+                v
+      controlled marker ablation
+                |
+                v
+      entity-aware Transformer
+                |
+                v
+      calibration + abstention
+                |
+                v
+      unseen-relation detection
+                |
+                v
+      FastAPI + batch inference
+                |
+                v
+      Next.js product interface
+                |
+                v
+      private API on Cloud Run
 ```
 
-Output:
+## What is implemented
 
-```json
-{
-  "head": "Marie Curie",
-  "relation": "place of birth",
-  "tail": "Warsaw",
-  "confidence": 0.964
-}
+### Notebook lineage
+
+Committed reproduction scripts preserve:
+
+- the original seven-relation LSTM;
+- the original 70/30 then 80/20 split logic;
+- Seq2Seq LSTM + attention;
+- T5 generation;
+- legacy 32-token T5 target evaluation and corrected non-truncating evaluation;
+- the K = 7, 10, 15, 20, 30 LSTM/BiLSTM scaling study.
+
+See:
+
+- `docs/notebook_lineage.md`
+- `docs/notebook_reference_metrics.md`
+
+Historical notebook metrics are stored only as reproduction targets, not as final RelationScope claims.
+
+### Production NLP track
+
+Implemented:
+
+- FewRel Closed-Set-80 protocol;
+- word + character TF-IDF logistic-regression baseline;
+- ModernBERT-compatible Transformer classifier;
+- HEAD / TAIL special tokens;
+- CLS-only and entity-aware pooling modes;
+- controlled entity-marker ablation;
+- Accuracy, Macro-F1, Micro-F1, Top-3 Accuracy and ECE;
+- temperature scaling;
+- risk-coverage analysis;
+- relation-level open-set benchmark;
+- `UNKNOWN_RELATION` abstention;
+- OOD AUROC / AUPRC / FPR95 / Unknown-F1;
+- token-occlusion evidence;
+- detailed error-analysis export;
+- latency benchmark;
+- generated model card;
+- explicit model-promotion gates.
+
+### Product/API track
+
+FastAPI endpoints:
+
+```text
+GET  /health
+GET  /ready
+GET  /v1/model
+
+POST /v1/relations:predict
+POST /v1/relations:predict-batch
+POST /v1/relations:predict-open-set
+POST /v1/relations:explain
 ```
 
-Core tasks:
+The API supports:
 
-- relation classification;
-- explicit head/tail entity marking;
-- entity-aware Transformer representations;
-- top-k calibrated predictions;
-- batch knowledge-triple extraction;
-- calibrated abstention / unknown-relation detection;
-- token-occlusion evidence for model explanations.
+- single inference;
+- vectorized batch inference;
+- top-k relations;
+- calibrated open-set decisions;
+- token-occlusion evidence;
+- privacy-preserving structured request logging.
 
-## Notebook lineage
+### Frontend
 
-RelationScope preserves the original ENSAI experimental path instead of hiding it behind the production Transformer.
+`apps/web` contains a Next.js App Router interface with:
 
-Install the optional legacy stack:
+- sentence + HEAD/TAIL entity inputs;
+- top-k confidence visualization;
+- KNOWN vs UNKNOWN decision card;
+- evidence heatmap;
+- CSV batch import;
+- downloadable sample CSV;
+- batch result export;
+- extracted knowledge graph;
+- Model Lab explaining the research progression.
+
+### Deployment
+
+Implemented deployment architecture:
+
+```text
+Browser
+   |
+   v
+Public Next.js Cloud Run
+   |
+   | Google-signed identity token
+   v
+Private FastAPI Cloud Run
+   |
+   | read-only IAM
+   v
+Versioned GCS model bundle
+```
+
+Also included:
+
+- separate API and web Dockerfiles;
+- Docker Compose for local integration;
+- Terraform for Cloud Run / GCS / Artifact Registry / IAM;
+- keyless GitHub -> GCP deployment with Workload Identity Federation;
+- SHA-256 model artifact manifests;
+- verified model download from GCS;
+- CI for Python and Next.js.
+
+## Core model architecture
+
+Default production classifier:
+
+```text
+sentence
+  +
+[HEAD] entity [/HEAD]
+[TAIL] entity [/TAIL]
+       |
+       v
+Transformer encoder
+       |
+       +---- CLS
+       +---- HEAD representation
+       +---- TAIL representation
+       +---- abs(HEAD - TAIL)
+                   |
+                   v
+             concatenation
+                   |
+                   v
+            relation logits
+                   |
+             temperature
+              scaling
+                   |
+                   v
+         relation / abstain
+```
+
+## Entity-marker ablation
+
+The project does not assume that entity markers help. It measures the effect under matched conditions:
+
+| Condition | Input | Pooling |
+|---|---|---|
+| A | raw text | CLS |
+| B | HEAD/TAIL markers | CLS |
+| C | HEAD/TAIL markers | CLS + HEAD + TAIL + abs(HEAD-TAIL) |
+
+The result is not filled in until the experiments are actually run.
+
+## Open-set protocol
+
+The open-set extension keeps relation identities separated:
+
+```text
+56 official-train relations
+    -> classifier training
+
+8 different official-train relations
+    -> threshold calibration only
+
+16 official-validation relations
+    -> untouched final unseen-relation test
+```
+
+This prevents tuning the rejection threshold on the final unseen-relation test set.
+
+## Repository layout
+
+```text
+.
+├── apps/
+│   └── web/                        # Next.js recruiter/product interface
+├── data/
+│   ├── raw/
+│   └── processed/
+├── docs/
+│   ├── api.md
+│   ├── gcp_deployment.md
+│   ├── local_development.md
+│   ├── methodology.md
+│   ├── model_promotion.md
+│   ├── notebook_lineage.md
+│   ├── notebook_reference_metrics.md
+│   └── premium_experiments.md
+├── infra/
+│   └── terraform/
+├── reports/
+├── scripts/
+│   ├── download_fewrel.py
+│   ├── prepare_fewrel.py
+│   ├── reproduce_notebook_lstm.py
+│   ├── reproduce_notebook_attention.py
+│   ├── reproduce_notebook_t5.py
+│   ├── reproduce_notebook_scaling.py
+│   ├── train_tfidf_baseline.py
+│   ├── train_transformer.py
+│   ├── run_marker_ablation.py
+│   ├── prepare_open_set_fewrel.py
+│   ├── train_open_set_transformer.py
+│   ├── evaluate_model.py
+│   ├── benchmark_latency.py
+│   ├── build_model_card.py
+│   └── publish_model_bundle.py
+├── src/
+│   └── relationscope/
+│       ├── api/
+│       ├── data/
+│       ├── inference/
+│       ├── legacy/
+│       ├── models/
+│       └── training/
+├── tests/
+├── compose.yaml
+├── Dockerfile
+├── Makefile
+└── pyproject.toml
+```
+
+## Installation
+
+Python 3.11-3.13 is supported. Python 3.12 is recommended.
+
+```bash
+uv sync --all-groups
+```
+
+To reproduce the TensorFlow notebook lineage later:
 
 ```bash
 uv sync --all-groups --extra legacy
 ```
 
-Reproduce the original seven-relation LSTM classification experiment:
+Frontend dependencies:
 
 ```bash
-uv run python scripts/reproduce_notebook_lstm.py
+cd apps/web
+npm install
 ```
 
-Reproduce the LSTM encoder-decoder with attention:
+## Execution order when experiments begin
 
-```bash
-uv run python scripts/reproduce_notebook_attention.py
-```
-
-Reproduce the scaling study from 7 to 30 relations:
-
-```bash
-uv run python scripts/reproduce_notebook_scaling.py
-```
-
-Reproduce T5 exactly with the notebook's 32-token target cap:
-
-```bash
-uv run python scripts/reproduce_notebook_t5.py --legacy-target-length
-```
-
-Run the corrected T5 experiment without intentionally truncating relation labels:
-
-```bash
-uv run python scripts/reproduce_notebook_t5.py
-```
-
-See `docs/notebook_lineage.md` for the exact mapping from the ENSAI lab to the production project.
-
-## Benchmark protocol
-
-FewRel 1.0 officially uses **64 training relations + 16 disjoint validation relations** for few-shot evaluation. RelationScope does **not** claim leaderboard comparability with that protocol.
-
-For the production classifier we explicitly define a separate benchmark:
-
-> **FewRel Closed-Set-80** = the 64 train relations and 16 validation relations combined, then split *within each relation* into deterministic train/validation/test partitions.
-
-This answers a different question: *how well can a deployed classifier recognize a fixed catalogue of 80 known relations?*
-
-All reports must state the protocol name.
-
-## V1 architecture
+No need to run this yet. The planned order is frozen as:
 
 ```text
-FewRel JSON
-    |
-    v
-Entity span validation
-    |
-    v
-[HEAD] ... [/HEAD] / [TAIL] ... [/TAIL]
-    |
-    +--------------------------+
-    |                          |
-    v                          v
-TF-IDF + Logistic       Transformer encoder
-Regression baseline     + entity-aware pooling
-    |                          |
-    +------------+-------------+
-                 v
-       Accuracy / Macro-F1
-       Top-k / ECE / latency
-                 |
-                 v
-             FastAPI
+1. tests + data integrity
+2. notebook LSTM reproduction
+3. notebook attention reproduction
+4. notebook T5 reproduction/correction
+5. notebook K-scaling reproduction
+6. TF-IDF baseline
+7. closed-set Transformer
+8. marker ablation
+9. open-set Transformer
+10. calibration / error analysis
+11. latency benchmark
+12. model promotion
+13. GCS publication
+14. Cloud Run deployment
 ```
 
-## Repository layout
+## Methodological guardrails
 
-```text
-src/relationscope/
-  api/            FastAPI service
-  data/           FewRel parsing, entity markers, splits
-  inference/      production predictor
-  models/         entity-aware Transformer classifier
-  training/       metrics and training utilities
-
-scripts/
-  download_fewrel.py
-  prepare_fewrel.py
-  train_tfidf_baseline.py
-  train_transformer.py
-
-tests/
-docs/
-```
-
-## Quick start
-
-Requirements: Python 3.11+ and [uv](https://docs.astral.sh/uv/).
-
-```bash
-git clone https://github.com/EL-K-Code/relationscope-nlp.git
-cd relationscope-nlp
-
-uv sync --all-groups
-```
-
-Download the official FewRel files:
-
-```bash
-uv run python scripts/download_fewrel.py
-```
-
-Prepare deterministic Closed-Set-80 splits:
-
-```bash
-uv run python scripts/prepare_fewrel.py
-```
-
-Train the lexical baseline:
-
-```bash
-uv run python scripts/train_tfidf_baseline.py
-```
-
-Train the entity-aware Transformer:
-
-```bash
-uv run python scripts/train_transformer.py \
-  --model-name answerdotai/ModernBERT-base \
-  --epochs 3
-```
-
-Run tests:
-
-```bash
-uv run pytest
-uv run ruff check .
-```
-
-## API
-
-After a model bundle exists:
-
-```bash
-RELATIONSCOPE_MODEL_DIR=artifacts/transformer/best \
-uv run uvicorn relationscope.api.main:app --host 0.0.0.0 --port 8080
-```
-
-Example request:
-
-```json
-{
-  "text": "Marie Curie was born in Warsaw in 1867.",
-  "head": {"text": "Marie Curie", "start": 0, "end": 11},
-  "tail": {"text": "Warsaw", "start": 24, "end": 30},
-  "top_k": 3
-}
-```
-
-## Premium experiments
-
-Beyond reproducing the ENSAI notebook, RelationScope includes three controlled extensions:
-
-- **entity-marker ablation**: raw CLS vs marked CLS vs entity-aware pooling;
-- **open-set relation detection**: 56 known relations, 8 calibration-unknown relations and 16 untouched unseen test relations;
-- **token-occlusion explanations**: evidence tokens ranked by their impact on prediction confidence.
-
-See `docs/premium_experiments.md`.
-
-Useful commands:
-
-```bash
-uv run python scripts/run_marker_ablation.py
-uv run python scripts/prepare_open_set_fewrel.py
-uv run python scripts/train_open_set_transformer.py
-```
-
-## Roadmap
-
-- **V1** — reproducible Closed-Set-80 benchmark + TF-IDF baseline + entity-aware Transformer.
-- **V2** — entity-marker ablations, calibration, abstention, unseen-relation detection and error analysis.
-- **V3** — React/Next.js UI + batch extraction + knowledge graph view.
-- **V4** — Docker, Cloud Run, Artifact Registry, CI/CD, monitoring.
-- **V5** — unknown-relation detection, abstention, active learning.
+- FewRel Closed-Set-80 is **not** presented as the official FewRel few-shot leaderboard protocol.
+- The legacy T5 32-token result is separated from full-target exact match.
+- Final unseen relations are not used for threshold tuning.
+- Metrics enter the README/CV only after committed scripts reproduce them.
+- Raw sentences are not written to production request logs.
+- GCP is the serving/industrialization layer; NLP experimentation remains the core of the project.
 
 ## Data and attribution
 
-FewRel is provided by THUNLP and the official repository is MIT-licensed. If you use the dataset, cite:
+FewRel is provided by THUNLP. If using the dataset, cite:
 
 > Han et al. (2018), *FewRel: A Large-Scale Supervised Few-Shot Relation Classification Dataset with State-of-the-Art Evaluation*, EMNLP 2018.
 
 Official repository: https://github.com/thunlp/FewRel
 
-Raw data are downloaded locally and are not committed to this repository.
+Raw datasets, trained weights and credentials are not committed to Git.
