@@ -17,7 +17,7 @@ class EntitySpan(BaseModel):
     end: int = Field(gt=0)
 
     @model_validator(mode="after")
-    def validate_order(self) -> "EntitySpan":
+    def validate_order(self) -> EntitySpan:
         if self.end <= self.start:
             raise ValueError("entity end must be greater than start")
         return self
