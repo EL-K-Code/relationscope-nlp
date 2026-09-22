@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ID="\${1:?usage: bootstrap_gcp_state.sh PROJECT_ID REGION STATE_BUCKET}"
-REGION="\${2:?usage: bootstrap_gcp_state.sh PROJECT_ID REGION STATE_BUCKET}"
-STATE_BUCKET="\${3:?usage: bootstrap_gcp_state.sh PROJECT_ID REGION STATE_BUCKET}"
+PROJECT_ID="${1:?usage: bootstrap_gcp_state.sh PROJECT_ID REGION STATE_BUCKET}"
+REGION="${2:?usage: bootstrap_gcp_state.sh PROJECT_ID REGION STATE_BUCKET}"
+STATE_BUCKET="${3:?usage: bootstrap_gcp_state.sh PROJECT_ID REGION STATE_BUCKET}"
 
 gcloud config set project "$PROJECT_ID"
 gcloud services enable storage.googleapis.com
