@@ -8,7 +8,15 @@ from pathlib import Path
 import torch
 
 from relationscope.data.markers import mark_character_spans
-from relationscope.data.schema import EntitySpan, Prediction, PredictResponse
+from relationscope.data.schema import (
+    BatchPredictExample,
+    BatchPredictResponse,
+    EntitySpan,
+    ModelInfoResponse,
+    Prediction,
+    PredictionItem,
+    PredictResponse,
+)
 from relationscope.models.entity_classifier import (
     EntityAwareRelationClassifier,
     marker_positions,
@@ -43,6 +51,35 @@ class RelationPredictor:
         self.model, self.tokenizer, self.label_map = loaded
         self.model_id = bundle_dir.name
 
+    def info(self) -> ModelInfoResponse:
+        return ModelInfoResponse(
+            model_id=self.model_id,
+            device=str(self.device),
+            num_relations=len(self.label_map),
+            max_length=self.max_length,
+        )
+
+    def _decode_row(
+        self,
+        probabilities: torch.Tensor,
+        *,
+        top_k: int,
+    ) -> list[Prediction]:
+        count = min(top_k, int(probabilities.shape[0]))
+        values, indices = torch.topk(probabilities, k=count)
+
+        predictions: list[Prediction] = []
+        for value, index in zip(values.tolist(), indices.tolist(), strict=True):
+            metadata = self.label_map[str(index)]
+            predictions.append(
+                Prediction(
+                    relation_id=metadata["relation_id"],
+                    relation_name=metadata["relation_name"],
+                    confidence=float(value),
+                )
+            )
+        return predictions
+
     @torch.inference_mode()
     def predict(
         self,
@@ -73,20 +110,7 @@ class RelationPredictor:
             head_pos,
             tail_pos,
         )
-        probabilities = torch.softmax(logits[0], dim=-1)
-        count = min(top_k, probabilities.shape[0])
-        values, indices = torch.topk(probabilities, k=count)
-
-        predictions: list[Prediction] = []
-        for value, index in zip(values.tolist(), indices.tolist(), strict=True):
-            metadata = self.label_map[str(index)]
-            predictions.append(
-                Prediction(
-                    relation_id=metadata["relation_id"],
-                    relation_name=metadata["relation_name"],
-                    confidence=float(value),
-                )
-            )
+        predictions = self._decode_row(torch.softmax(logits[0], dim=-1), top_k=top_k)
 
         latency_ms = (time.perf_counter() - start_time) * 1000
         return PredictResponse(
@@ -96,4 +120,61 @@ class RelationPredictor:
             predictions=predictions,
             latency_ms=latency_ms,
             model_id=self.model_id,
+        )
+
+    @torch.inference_mode()
+    def predict_batch(
+        self,
+        *,
+        examples: list[BatchPredictExample],
+        top_k: int,
+    ) -> BatchPredictResponse:
+        start_time = time.perf_counter()
+
+        marked_texts = [
+            mark_character_spans(example.text, example.head, example.tail)
+            for example in examples
+        ]
+        encoded = self.tokenizer(
+            marked_texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+        )
+        encoded = {key: value.to(self.device) for key, value in encoded.items()}
+        head_pos, tail_pos = marker_positions(
+            encoded["input_ids"],
+            self.tokenizer,
+        )
+
+        logits = self.model(
+            encoded["input_ids"],
+            encoded["attention_mask"],
+            head_pos,
+            tail_pos,
+        )
+        probabilities = torch.softmax(logits, dim=-1)
+
+        items = [
+            PredictionItem(
+                head=example.head.text,
+                tail=example.tail.text,
+                marked_text=marked,
+                predictions=self._decode_row(row, top_k=top_k),
+            )
+            for example, marked, row in zip(
+                examples,
+                marked_texts,
+                probabilities,
+                strict=True,
+            )
+        ]
+
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        return BatchPredictResponse(
+            items=items,
+            latency_ms=latency_ms,
+            model_id=self.model_id,
+            batch_size=len(items),
         )
