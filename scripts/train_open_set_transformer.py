@@ -382,7 +382,12 @@ def main() -> None:
         ),
         encoding="utf-8",
     )
-    print(json.dumps({key: value for key, value in report.items() if key != "risk_coverage"}, indent=2))
+    printable_report = {
+        key: value
+        for key, value in report.items()
+        if key != "risk_coverage"
+    }
+    print(json.dumps(printable_report, indent=2))
 
 
 if __name__ == "__main__":
