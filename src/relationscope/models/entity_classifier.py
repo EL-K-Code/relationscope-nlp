@@ -80,12 +80,21 @@ class EntityAwareRelationClassifier(nn.Module):
         bundle_dir: Path,
         *,
         device: torch.device,
-    ) -> tuple["EntityAwareRelationClassifier", PreTrainedTokenizerBase, dict[str, dict[str, str]]]:
-        label_map = json.loads((bundle_dir / "relations.json").read_text(encoding="utf-8"))
-        model = cls(str(bundle_dir / "encoder"), num_labels=len(label_map))
-        model.classifier.load_state_dict(
-            torch.load(bundle_dir / "classifier.pt", map_location=device, weights_only=True)
+    ) -> tuple[
+        "EntityAwareRelationClassifier",
+        PreTrainedTokenizerBase,
+        dict[str, dict[str, str]],
+    ]:
+        label_map = json.loads(
+            (bundle_dir / "relations.json").read_text(encoding="utf-8")
         )
+        model = cls(str(bundle_dir / "encoder"), num_labels=len(label_map))
+        classifier_state = torch.load(
+            bundle_dir / "classifier.pt",
+            map_location=device,
+            weights_only=True,
+        )
+        model.classifier.load_state_dict(classifier_state)
         tokenizer = AutoTokenizer.from_pretrained(bundle_dir / "tokenizer")
         model.to(device)
         model.eval()
@@ -119,7 +128,9 @@ def marker_positions(
         head_matches = (row == head_id).nonzero(as_tuple=False).flatten()
         tail_matches = (row == tail_id).nonzero(as_tuple=False).flatten()
         if len(head_matches) != 1 or len(tail_matches) != 1:
-            raise ValueError("each encoded example must contain exactly one HEAD and TAIL marker")
+            raise ValueError(
+                "each encoded example must contain exactly one HEAD and TAIL marker"
+            )
         heads.append(int(head_matches.item()))
         tails.append(int(tail_matches.item()))
 
