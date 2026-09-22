@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
@@ -18,6 +17,7 @@ from relationscope.data.schema import (
     PredictRequest,
     PredictResponse,
 )
+from relationscope.inference.model_store import resolve_model_bundle
 from relationscope.inference.predictor import RelationPredictor
 
 app = FastAPI(
@@ -29,16 +29,29 @@ app = FastAPI(
 
 @lru_cache(maxsize=1)
 def get_predictor() -> RelationPredictor:
-    model_dir = Path(os.getenv("RELATIONSCOPE_MODEL_DIR", "artifacts/transformer/best"))
+    model_dir = resolve_model_bundle()
     device = os.getenv("RELATIONSCOPE_DEVICE", "auto")
     if not model_dir.exists():
-        raise RuntimeError(f"model bundle not found: {model_dir}")
+        raise RuntimeError(
+            "model bundle not found locally and no usable GCS bundle was configured"
+        )
     return RelationPredictor(model_dir, device=device)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """Liveness probe that deliberately does not force model loading."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, str]:
+    """Readiness probe: succeeds only after a model bundle can be loaded."""
+    try:
+        predictor = get_predictor()
+        return {"status": "ready", "model_id": predictor.model_id}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/v1/model", response_model=ModelInfoResponse)
