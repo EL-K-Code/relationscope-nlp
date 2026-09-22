@@ -34,7 +34,8 @@ Core tasks:
 - entity-aware Transformer representations;
 - top-k calibrated predictions;
 - batch knowledge-triple extraction;
-- later: abstention / unknown-relation detection.
+- calibrated abstention / unknown-relation detection;
+- token-occlusion evidence for model explanations.
 
 ## Notebook lineage
 
@@ -200,10 +201,28 @@ Example request:
 }
 ```
 
+## Premium experiments
+
+Beyond reproducing the ENSAI notebook, RelationScope includes three controlled extensions:
+
+- **entity-marker ablation**: raw CLS vs marked CLS vs entity-aware pooling;
+- **open-set relation detection**: 56 known relations, 8 calibration-unknown relations and 16 untouched unseen test relations;
+- **token-occlusion explanations**: evidence tokens ranked by their impact on prediction confidence.
+
+See `docs/premium_experiments.md`.
+
+Useful commands:
+
+```bash
+uv run python scripts/run_marker_ablation.py
+uv run python scripts/prepare_open_set_fewrel.py
+uv run python scripts/train_open_set_transformer.py
+```
+
 ## Roadmap
 
 - **V1** — reproducible Closed-Set-80 benchmark + TF-IDF baseline + entity-aware Transformer.
-- **V2** — model comparison, calibration, error analysis, experiment tracking.
+- **V2** — entity-marker ablations, calibration, abstention, unseen-relation detection and error analysis.
 - **V3** — React/Next.js UI + batch extraction + knowledge graph view.
 - **V4** — Docker, Cloud Run, Artifact Registry, CI/CD, monitoring.
 - **V5** — unknown-relation detection, abstention, active learning.
