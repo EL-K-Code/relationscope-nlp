@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 
 from relationscope.constants import HEAD_END, HEAD_START, TAIL_END, TAIL_START
 from relationscope.data.schema import EntitySpan
@@ -37,8 +37,6 @@ def mark_fewrel_tokens(
     if head[-1] >= len(tokens) or tail[-1] >= len(tokens):
         raise ValueError("entity span is outside token sequence")
 
-    head_set = set(head)
-    tail_set = set(tail)
     output: list[str] = []
 
     for index, token in enumerate(tokens):
