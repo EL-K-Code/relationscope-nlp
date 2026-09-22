@@ -6,11 +6,10 @@ import type {
   PredictResponse,
 } from "@/lib/types";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_RELATIONSCOPE_API_URL ?? "http://localhost:8080";
+const API_BASE = "/api/relationscope";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
