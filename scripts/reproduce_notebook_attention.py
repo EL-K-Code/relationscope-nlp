@@ -224,33 +224,72 @@ def main() -> None:
         verbose=0,
     )
 
-    def decode_relation(x: np.ndarray) -> str:
-        generated = [output_vocab["<bos>"]]
-        for _ in range(max_output):
-            padded = generated + [output_vocab["<pad>"]] * (max_output - len(generated))
+    # Save the trained model before autoregressive decoding so an interrupted
+    # evaluation never discards the completed 15-epoch training run.
+    OUT.mkdir(parents=True, exist_ok=True)
+    model.save(OUT / "model.keras")
+
+    def decode_batch(x: np.ndarray, batch_size: int = 128) -> list[str]:
+        """Greedy autoregressive decoding with one predict call per time step.
+
+        The original notebook-style loop decoded one example at a time, which
+        creates thousands of tiny TensorFlow predict calls on CPU. This batched
+        implementation preserves the same greedy decoding rule while evaluating
+        the full test set together.
+        """
+        n_examples = len(x)
+        decoder_inputs = np.full(
+            (n_examples, max_output),
+            output_vocab["<pad>"],
+            dtype=np.int32,
+        )
+        decoder_inputs[:, 0] = output_vocab["<bos>"]
+
+        finished = np.zeros(n_examples, dtype=bool)
+        generated: list[list[int]] = [[] for _ in range(n_examples)]
+
+        for step in range(max_output):
             predictions = model.predict(
-                [x, np.asarray([padded], dtype=np.int32)],
+                [x, decoder_inputs],
+                batch_size=batch_size,
                 verbose=0,
             )
-            next_id = int(np.argmax(predictions[0, len(generated) - 1]))
-            if next_id == output_vocab["<eos>"]:
-                break
-            generated.append(next_id)
+            next_ids = np.argmax(predictions[:, step, :], axis=-1)
 
-        return " ".join(
-            inverse_output[index]
-            for index in generated[1:]
-            if index not in {
-                output_vocab["<pad>"],
-                output_vocab["<bos>"],
-                output_vocab["<eos>"],
-            }
-        )
+            for row, next_id in enumerate(next_ids.tolist()):
+                if finished[row]:
+                    continue
+                if next_id == output_vocab["<eos>"]:
+                    finished[row] = True
+                    continue
+
+                generated[row].append(int(next_id))
+                if step + 1 < max_output:
+                    decoder_inputs[row, step + 1] = int(next_id)
+
+            if bool(np.all(finished)):
+                break
+
+        excluded = {
+            output_vocab["<pad>"],
+            output_vocab["<bos>"],
+            output_vocab["<eos>"],
+        }
+        return [
+            " ".join(
+                inverse_output[index]
+                for index in sequence
+                if index not in excluded
+            )
+            for sequence in generated
+        ]
+
+    print("Running batched autoregressive exact-match evaluation...")
+    predictions = decode_batch(x_test)
 
     correct = 0
     examples = []
-    for index, record in enumerate(splits["test"]):
-        prediction = decode_relation(x_test[index : index + 1])
+    for record, prediction in zip(splits["test"], predictions, strict=True):
         gold = clean_relation_description(notebook_label(record))
         is_correct = prediction == gold
         correct += int(is_correct)
@@ -285,8 +324,6 @@ def main() -> None:
         "sample_predictions": examples,
     }
 
-    OUT.mkdir(parents=True, exist_ok=True)
-    model.save(OUT / "model.keras")
     (OUT / "metrics.json").write_text(
         json.dumps(report, indent=2, ensure_ascii=False),
         encoding="utf-8",
