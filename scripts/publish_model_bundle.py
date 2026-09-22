@@ -23,7 +23,11 @@ def parse_gs_uri(uri: str) -> tuple[str, str]:
     parsed = urlparse(uri)
     if parsed.scheme != "gs" or not parsed.netloc:
         raise ValueError(f"invalid GCS URI: {uri!r}")
-    return parsed.netloc, parsed.path.lstrip("/").rstrip("/")
+
+    prefix = parsed.path.lstrip("/").rstrip("/")
+    if not prefix:
+        raise ValueError("model destination must include a non-empty GCS prefix")
+    return parsed.netloc, prefix
 
 
 def collect_files(bundle_dir: Path) -> list[Path]:
@@ -44,10 +48,25 @@ def collect_files(bundle_dir: Path) -> list[Path]:
     )
 
 
+def clear_prefix(client: storage.Client, bucket_name: str, prefix: str) -> int:
+    """Delete current objects under a model prefix before publishing replacement files."""
+    normalized_prefix = f"{prefix}/"
+    deleted = 0
+    bucket = client.bucket(bucket_name)
+
+    for blob in client.list_blobs(bucket_name, prefix=normalized_prefix):
+        if blob.name.endswith("/"):
+            continue
+        bucket.blob(blob.name).delete()
+        deleted += 1
+
+    return deleted
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("bundle_dir", type=Path)
-    parser.add_argument("destination", help="gs://bucket/prefix")
+    parser.add_argument("destination", help="gs://bucket/non-empty-prefix")
     parser.add_argument("--model-version", default=None)
     args = parser.parse_args()
 
@@ -71,9 +90,12 @@ def main() -> None:
     client = storage.Client()
     bucket = client.bucket(bucket_name)
 
+    deleted = clear_prefix(client, bucket_name, prefix)
+    print(f"cleared {deleted} existing objects under gs://{bucket_name}/{prefix}/")
+
     for path in files:
         relative = str(path.relative_to(args.bundle_dir)).replace("\\", "/")
-        object_name = "/".join(part for part in (prefix, relative) if part)
+        object_name = "/".join((prefix, relative))
         print(f"upload {relative} -> gs://{bucket_name}/{object_name}")
         bucket.blob(object_name).upload_from_filename(path)
 
@@ -82,6 +104,7 @@ def main() -> None:
             {
                 "destination": args.destination,
                 "files": len(files),
+                "deleted_previous_objects": deleted,
                 "model_version": manifest["model_version"],
             },
             indent=2,
