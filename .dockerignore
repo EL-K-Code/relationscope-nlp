@@ -8,3 +8,8 @@ data
 notebooks
 tests
 docs
+apps
+infra
+reports
+artifacts
+gha-creds-*.json
