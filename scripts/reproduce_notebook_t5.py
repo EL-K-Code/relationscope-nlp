@@ -100,10 +100,22 @@ def _target_budget(tokenizer, records) -> tuple[int, int]:
     return max(lengths), sum(length > 32 for length in lengths)
 
 
+def _truncate_gold(tokenizer, text: str, max_length: int) -> str:
+    encoded = tokenizer(
+        text,
+        max_length=max_length,
+        truncation=True,
+        add_special_tokens=True,
+        return_tensors="pt",
+    )
+    return tokenizer.decode(encoded["input_ids"][0], skip_special_tokens=True)
+
+
 @torch.inference_mode()
 def evaluate(model, tokenizer, records, device, max_input_length, max_target_length):
     model.eval()
-    correct = 0
+    full_gold_correct = 0
+    truncated_gold_correct = 0
     predictions = []
 
     for record in tqdm(records, desc="t5-eval"):
@@ -122,18 +134,31 @@ def evaluate(model, tokenizer, records, device, max_input_length, max_target_len
             early_stopping=True,
         )
         prediction = tokenizer.decode(generated[0], skip_special_tokens=True)
-        gold = notebook_label(record)
+        full_gold = notebook_label(record)
+        truncated_gold = _truncate_gold(tokenizer, full_gold, max_target_length)
+
+        full_match = normalize(prediction) == normalize(full_gold)
+        truncated_match = normalize(prediction) == normalize(truncated_gold)
+
+        full_gold_correct += int(full_match)
+        truncated_gold_correct += int(truncated_match)
 
         predictions.append(
             {
                 "prediction": prediction,
-                "gold": gold,
-                "correct": normalize(prediction) == normalize(gold),
+                "gold_full": full_gold,
+                "gold_truncated_to_generation_budget": truncated_gold,
+                "full_gold_correct": full_match,
+                "truncated_gold_correct": truncated_match,
             }
         )
-        correct += int(normalize(prediction) == normalize(gold))
 
-    return correct / max(len(records), 1), predictions
+    total = max(len(records), 1)
+    return {
+        "full_gold_exact_match": full_gold_correct / total,
+        "truncated_gold_exact_match": truncated_gold_correct / total,
+        "predictions": predictions,
+    }
 
 
 def main() -> None:
@@ -233,7 +258,7 @@ def main() -> None:
             tokenizer.save_pretrained(best_dir)
 
     best_model = T5ForConditionalGeneration.from_pretrained(best_dir).to(device)
-    exact_match, predictions = evaluate(
+    evaluation = evaluate(
         best_model,
         tokenizer,
         splits["test"],
@@ -250,7 +275,8 @@ def main() -> None:
         "required_target_length": required_target_length,
         "train_labels_over_32": labels_over_32,
         "max_target_length": max_target_length,
-        "test_exact_match": exact_match,
+        "test_full_gold_exact_match": evaluation["full_gold_exact_match"],
+        "test_truncated_gold_exact_match": evaluation["truncated_gold_exact_match"],
         "history": history,
     }
     (OUT / "metrics.json").write_text(
@@ -258,7 +284,7 @@ def main() -> None:
         encoding="utf-8",
     )
     (OUT / "test_predictions.json").write_text(
-        json.dumps(predictions, indent=2, ensure_ascii=False),
+        json.dumps(evaluation["predictions"], indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     print(json.dumps(report, indent=2))
