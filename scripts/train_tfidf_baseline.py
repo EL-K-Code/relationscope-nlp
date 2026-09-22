@@ -8,7 +8,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from relationscope.data.io import read_jsonl
@@ -54,10 +54,18 @@ def main() -> None:
             ("features", features),
             (
                 "classifier",
-                LogisticRegression(
-                    max_iter=1000,
-                    solver="lbfgs",
-                    C=4.0,
+                SGDClassifier(
+                    loss="log_loss",
+                    penalty="l2",
+                    alpha=1e-5,
+                    max_iter=100,
+                    tol=1e-4,
+                    early_stopping=True,
+                    validation_fraction=0.1,
+                    n_iter_no_change=5,
+                    average=True,
+                    random_state=42,
+                    n_jobs=-1,
                 ),
             ),
         ]
@@ -73,7 +81,7 @@ def main() -> None:
 
     report: dict[str, object] = {
         "protocol": "fewrel_closed_set_80",
-        "model": "tfidf_word_char_logistic_regression",
+        "model": "tfidf_word_char_sgd_logistic_regression",
     }
     for split_name, records in (("validation", validation), ("test", test)):
         labels = np.array([rel2id[record.relation_id] for record in records])
