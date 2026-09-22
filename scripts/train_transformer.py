@@ -1,4 +1,4 @@
-"""Train the entity-aware Transformer classifier."""
+"""Train a configurable Transformer relation classifier."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ from relationscope.data.io import read_jsonl
 from relationscope.data.schema import RelationRecord
 from relationscope.models.entity_classifier import (
     EntityAwareRelationClassifier,
+    InputView,
+    PoolingMode,
     build_tokenizer,
     marker_positions,
     resize_for_markers,
@@ -40,31 +42,54 @@ class RelationDataset(Dataset[RelationRecord]):
 
 
 class BatchCollator:
-    def __init__(self, tokenizer: Any, rel2id: dict[str, int], max_length: int) -> None:
+    def __init__(
+        self,
+        tokenizer: Any,
+        rel2id: dict[str, int],
+        max_length: int,
+        *,
+        pooling_mode: PoolingMode,
+        input_view: InputView,
+    ) -> None:
         self.tokenizer = tokenizer
         self.rel2id = rel2id
         self.max_length = max_length
+        self.pooling_mode = pooling_mode
+        self.input_view = input_view
 
     def __call__(self, records: list[RelationRecord]) -> dict[str, torch.Tensor]:
+        texts = [
+            record.marked_text
+            if self.input_view == "marked"
+            else " ".join(record.tokens)
+            for record in records
+        ]
         encoded = self.tokenizer(
-            [record.marked_text for record in records],
+            texts,
             padding=True,
             truncation=True,
             max_length=self.max_length,
             return_tensors="pt",
         )
-        head_pos, tail_pos = marker_positions(encoded["input_ids"], self.tokenizer)
-        labels = torch.tensor(
-            [self.rel2id[record.relation_id] for record in records],
-            dtype=torch.long,
-        )
-        return {
+
+        batch: dict[str, torch.Tensor] = {
             "input_ids": encoded["input_ids"],
             "attention_mask": encoded["attention_mask"],
-            "head_pos": head_pos,
-            "tail_pos": tail_pos,
-            "labels": labels,
+            "labels": torch.tensor(
+                [self.rel2id[record.relation_id] for record in records],
+                dtype=torch.long,
+            ),
         }
+
+        if self.pooling_mode == "entity_pair":
+            head_pos, tail_pos = marker_positions(
+                encoded["input_ids"],
+                self.tokenizer,
+            )
+            batch["head_pos"] = head_pos
+            batch["tail_pos"] = tail_pos
+
+        return batch
 
 
 def set_seed(seed: int) -> None:
@@ -107,12 +132,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-length", type=int, default=160)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--pooling-mode", choices=["cls", "entity_pair"], default="entity_pair")
+    parser.add_argument("--input-view", choices=["raw", "marked"], default="marked")
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/transformer"))
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.pooling_mode == "entity_pair" and args.input_view != "marked":
+        raise SystemExit("entity_pair pooling requires --input-view marked")
+
     set_seed(args.seed)
 
     train = read_jsonl(DATA / "train.jsonl")
@@ -125,20 +155,32 @@ def main() -> None:
         str(index): {
             "relation_id": relation_id,
             "relation_name": next(
-                record.relation_name for record in train if record.relation_id == relation_id
+                record.relation_name for record in train
+                if record.relation_id == relation_id
             ),
         }
         for relation_id, index in rel2id.items()
     }
 
     tokenizer = build_tokenizer(args.model_name)
-    model = EntityAwareRelationClassifier(args.model_name, num_labels=len(rel2id))
+    model = EntityAwareRelationClassifier(
+        args.model_name,
+        num_labels=len(rel2id),
+        pooling_mode=args.pooling_mode,
+        input_view=args.input_view,
+    )
     resize_for_markers(model, tokenizer)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    collator = BatchCollator(tokenizer, rel2id, args.max_length)
+    collator = BatchCollator(
+        tokenizer,
+        rel2id,
+        args.max_length,
+        pooling_mode=args.pooling_mode,
+        input_view=args.input_view,
+    )
     train_loader = DataLoader(
         RelationDataset(train),
         batch_size=args.batch_size,
@@ -210,7 +252,13 @@ def main() -> None:
         best_dir,
         device=device,
     )
-    best_collator = BatchCollator(best_tokenizer, rel2id, args.max_length)
+    best_collator = BatchCollator(
+        best_tokenizer,
+        rel2id,
+        args.max_length,
+        pooling_mode=best_model.pooling_mode,
+        input_view=best_model.input_view,
+    )
     test_loader = DataLoader(
         RelationDataset(test),
         batch_size=args.batch_size * 2,
@@ -223,6 +271,8 @@ def main() -> None:
         "protocol": "fewrel_closed_set_80",
         "base_model": args.model_name,
         "seed": args.seed,
+        "pooling_mode": args.pooling_mode,
+        "input_view": args.input_view,
         "best_validation_macro_f1": best_f1,
         "test": test_metrics,
         "history": history,
