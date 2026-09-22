@@ -11,7 +11,10 @@ from fastapi import FastAPI, HTTPException
 from relationscope.data.schema import (
     BatchPredictRequest,
     BatchPredictResponse,
+    ExplainRequest,
+    ExplainResponse,
     ModelInfoResponse,
+    OpenSetPredictResponse,
     PredictRequest,
     PredictResponse,
 )
@@ -54,6 +57,32 @@ def predict_relation(request: PredictRequest) -> PredictResponse:
             head=request.head,
             tail=request.tail,
             top_k=request.top_k,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/v1/relations:predict-open-set", response_model=OpenSetPredictResponse)
+def predict_relation_open_set(request: PredictRequest) -> OpenSetPredictResponse:
+    try:
+        return get_predictor().predict_open_set(
+            text=request.text,
+            head=request.head,
+            tail=request.tail,
+            top_k=request.top_k,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/v1/relations:explain", response_model=ExplainResponse)
+def explain_relation(request: ExplainRequest) -> ExplainResponse:
+    try:
+        return get_predictor().explain(
+            text=request.text,
+            head=request.head,
+            tail=request.tail,
+            top_evidence=request.top_evidence,
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
