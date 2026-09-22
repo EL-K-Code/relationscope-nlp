@@ -63,7 +63,7 @@ resource "google_service_account" "web" {
 resource "google_storage_bucket_iam_member" "api_reads_models" {
   bucket = google_storage_bucket.models.name
   role   = "roles/storage.objectViewer"
-  member = "serviceAccount:\${google_service_account.api.email}"
+  member = "serviceAccount:${google_service_account.api.email}"
 }
 
 resource "google_cloud_run_v2_service" "api" {
@@ -102,7 +102,7 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "RELATIONSCOPE_MODEL_GCS_URI"
-        value = "gs://\${google_storage_bucket.models.name}/\${var.model_prefix}"
+        value = "gs://${google_storage_bucket.models.name}/${var.model_prefix}"
       }
 
       env {
@@ -145,7 +145,7 @@ resource "google_cloud_run_v2_service_iam_member" "web_invokes_api" {
   location = google_cloud_run_v2_service.api.location
   name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:\${google_service_account.web.email}"
+  member   = "serviceAccount:${google_service_account.web.email}"
 }
 
 resource "google_cloud_run_v2_service" "web" {
