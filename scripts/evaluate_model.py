@@ -10,7 +10,6 @@ from pathlib import Path
 import numpy as np
 import torch
 from sklearn.metrics import classification_report, confusion_matrix
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from relationscope.data.io import read_jsonl
