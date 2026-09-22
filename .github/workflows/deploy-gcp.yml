@@ -1,0 +1,93 @@
+name: Deploy to GCP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: \${{ vars.GCP_PROJECT_ID }}
+      REGION: \${{ vars.GCP_REGION }}
+      REPOSITORY: \${{ vars.GAR_REPOSITORY }}
+      MODEL_BUCKET: \${{ vars.MODEL_BUCKET }}
+      TF_STATE_BUCKET: \${{ vars.TF_STATE_BUCKET }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: \${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: \${{ vars.GCP_WIF_PROVIDER }}
+          service_account: \${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Configure Artifact Registry Docker auth
+        run: gcloud auth configure-docker "\${REGION}-docker.pkg.dev" --quiet
+
+      - name: Compute immutable image references
+        id: images
+        shell: bash
+        run: |
+          API_IMAGE="\${REGION}-docker.pkg.dev/\${PROJECT_ID}/\${REPOSITORY}/api:\${GITHUB_SHA}"
+          WEB_IMAGE="\${REGION}-docker.pkg.dev/\${PROJECT_ID}/\${REPOSITORY}/web:\${GITHUB_SHA}"
+          echo "api=\${API_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "web=\${WEB_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Initialize Terraform
+        working-directory: infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=\${TF_STATE_BUCKET}" \
+            -backend-config="prefix=relationscope"
+
+      - name: Bootstrap registries, bucket and service identities
+        working-directory: infra/terraform
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=\${PROJECT_ID}" \
+            -var="region=\${REGION}" \
+            -var="model_bucket_name=\${MODEL_BUCKET}" \
+            -var="artifact_repository=\${REPOSITORY}" \
+            -var="api_image=\${{ steps.images.outputs.api }}" \
+            -var="web_image=\${{ steps.images.outputs.web }}" \
+            -target='google_project_service.required' \
+            -target='google_artifact_registry_repository.containers' \
+            -target='google_storage_bucket.models' \
+            -target='google_service_account.api' \
+            -target='google_service_account.web'
+
+      - name: Build API image
+        run: docker build -t "\${{ steps.images.outputs.api }}" .
+
+      - name: Build web image
+        run: docker build -t "\${{ steps.images.outputs.web }}" apps/web
+
+      - name: Push images
+        run: |
+          docker push "\${{ steps.images.outputs.api }}"
+          docker push "\${{ steps.images.outputs.web }}"
+
+      - name: Apply complete infrastructure
+        working-directory: infra/terraform
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=\${PROJECT_ID}" \
+            -var="region=\${REGION}" \
+            -var="model_bucket_name=\${MODEL_BUCKET}" \
+            -var="artifact_repository=\${REPOSITORY}" \
+            -var="api_image=\${{ steps.images.outputs.api }}" \
+            -var="web_image=\${{ steps.images.outputs.web }}"
+
+      - name: Print public URL
+        working-directory: infra/terraform
+        run: terraform output web_url
