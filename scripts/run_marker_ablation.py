@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 CONDITIONS = {
     "A_raw_cls": ["--input-view", "raw", "--pooling-mode", "cls"],
     "B_marked_cls": ["--input-view", "marked", "--pooling-mode", "cls"],
