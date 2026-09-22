@@ -1,0 +1,8 @@
+"""Shared constants."""
+
+HEAD_START = "[HEAD]"
+HEAD_END = "[/HEAD]"
+TAIL_START = "[TAIL]"
+TAIL_END = "[/TAIL]"
+
+ENTITY_MARKERS = [HEAD_START, HEAD_END, TAIL_START, TAIL_END]
