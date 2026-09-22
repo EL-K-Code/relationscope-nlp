@@ -36,6 +36,8 @@ def _span(text: str, mention: str) -> EntitySpan:
     start = text.find(mention)
     if start < 0:
         raise ValueError(f"mention not found: {mention!r}")
+    if text.find(mention, start + 1) >= 0:
+        raise ValueError(f"mention is ambiguous: {mention!r}")
     return EntitySpan(text=mention, start=start, end=start + len(mention))
 
 
