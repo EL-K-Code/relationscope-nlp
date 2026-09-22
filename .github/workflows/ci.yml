@@ -34,3 +34,15 @@ jobs:
       - run: npm install
       - run: npm run typecheck
       - run: npm run build
+
+  terraform-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
