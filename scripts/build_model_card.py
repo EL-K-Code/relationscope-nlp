@@ -51,13 +51,22 @@ def main() -> None:
     lines = [
         "# RelationScope Model Card",
         "",
-        "> Generated only from reproduced artifact files. Missing experiments remain pending.",
+        (
+            "> Generated only from reproduced artifact files. "
+            "Missing experiments remain pending."
+        ),
         "",
         "## Intended use",
         "",
-        "Relation classification between an explicitly supplied HEAD and TAIL entity in English FewRel-style sentences.",
+        (
+            "Relation classification between an explicitly supplied HEAD and TAIL "
+            "entity in English FewRel-style sentences."
+        ),
         "",
-        "The model is not a general-purpose fact checker and should not be treated as a source of truth outside its evaluated relation catalogue.",
+        (
+            "The model is not a general-purpose fact checker and should not be "
+            "treated as a source of truth outside its evaluated relation catalogue."
+        ),
         "",
         "## Closed-set quality",
         "",
@@ -89,7 +98,10 @@ def main() -> None:
                 f"- OOD AUPRC: {fmt(ood.get('ood_auprc', 'n/a'))}",
                 f"- FPR@95: {fmt(ood.get('ood_fpr95', 'n/a'))}",
                 f"- Unknown F1: {fmt(ood.get('unknown_f1', 'n/a'))}",
-                f"- Acceptance threshold: {fmt(open_set.get('abstention_threshold', 'n/a'))}",
+                (
+                    "- Acceptance threshold: "
+                    f"{fmt(open_set.get('abstention_threshold', 'n/a'))}"
+                ),
             ]
         )
     else:
@@ -114,14 +126,26 @@ def main() -> None:
             "",
             "## Known limitations",
             "",
-            "- Entity spans are currently supplied explicitly; end-to-end NER is not hidden inside the relation classifier.",
-            "- FewRel-style relation semantics do not guarantee transfer to every enterprise domain.",
-            "- Open-set rejection is confidence-based and must be evaluated before being relied upon.",
+            (
+                "- Entity spans are supplied explicitly; end-to-end NER is not "
+                "hidden inside the relation classifier."
+            ),
+            (
+                "- FewRel-style relation semantics do not guarantee transfer to "
+                "every enterprise domain."
+            ),
+            (
+                "- Open-set rejection is confidence-based and must be evaluated "
+                "before being relied upon."
+            ),
             "- Occlusion scores are evidence signals, not causal explanations.",
             "",
             "## Reproducibility",
             "",
-            "All metrics in this card must come from committed scripts and frozen protocol files.",
+            (
+                "All metrics in this card must come from committed scripts and "
+                "frozen protocol files."
+            ),
         ]
     )
 
