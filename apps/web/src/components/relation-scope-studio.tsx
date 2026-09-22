@@ -19,6 +19,7 @@ import {
   predictOpenSet,
   predictRelation,
 } from "@/lib/api";
+import { KnowledgeGraph } from "@/components/knowledge-graph";
 import { exportBatchResults, parseBatchCsv } from "@/lib/csv";
 import type {
   BatchInput,
@@ -398,6 +399,9 @@ export function RelationScopeStudio() {
                 <label htmlFor="csv">
                   <FileUp size={28} />
                   <strong>Import entity-pair CSV</strong>
+                  <a className="sampleLink" href="/sample-relations.csv" download>
+                    Download sample CSV
+                  </a>
                   <span>
                     id, text, head_text, head_start, head_end, tail_text,
                     tail_start, tail_end
@@ -428,6 +432,10 @@ export function RelationScopeStudio() {
                   </button>
                 )}
               </div>
+
+              {batchResults.length > 0 && (
+                <KnowledgeGraph results={batchResults} />
+              )}
 
               {batchResults.length > 0 && (
                 <div className="tableWrap">
