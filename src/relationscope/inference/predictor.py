@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
 import torch
 
+from relationscope.constants import ENTITY_MARKERS
 from relationscope.data.markers import mark_character_spans
 from relationscope.data.schema import (
     BatchPredictExample,
     BatchPredictResponse,
     EntitySpan,
+    ExplainResponse,
+    ExplanationToken,
     ModelInfoResponse,
+    OpenSetPredictResponse,
     Prediction,
     PredictionItem,
     PredictResponse,
@@ -51,12 +56,22 @@ class RelationPredictor:
         self.model, self.tokenizer, self.label_map = loaded
         self.model_id = bundle_dir.name
 
+        open_set_path = bundle_dir / "open_set_config.json"
+        self.open_set_config = (
+            json.loads(open_set_path.read_text(encoding="utf-8"))
+            if open_set_path.exists()
+            else None
+        )
+
     def info(self) -> ModelInfoResponse:
         return ModelInfoResponse(
             model_id=self.model_id,
             device=str(self.device),
             num_relations=len(self.label_map),
             max_length=self.max_length,
+            pooling_mode=self.model.pooling_mode,
+            input_view=self.model.input_view,
+            open_set_enabled=self.open_set_config is not None,
         )
 
     def _input_text(self, text: str, head: EntitySpan, tail: EntitySpan) -> str:
@@ -102,6 +117,19 @@ class RelationPredictor:
             )
         return predictions
 
+    def _probabilities(
+        self,
+        logits: torch.Tensor,
+        *,
+        calibrated: bool = False,
+    ) -> torch.Tensor:
+        if calibrated:
+            if self.open_set_config is None:
+                raise RuntimeError("open-set calibration is not available for this model")
+            temperature = float(self.open_set_config["temperature"])
+            logits = logits / temperature
+        return torch.softmax(logits, dim=-1)
+
     @torch.inference_mode()
     def predict(
         self,
@@ -122,7 +150,10 @@ class RelationPredictor:
         )
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
         logits = self.model(**self._model_inputs(encoded))
-        predictions = self._decode_row(torch.softmax(logits[0], dim=-1), top_k=top_k)
+        predictions = self._decode_row(
+            self._probabilities(logits[0]),
+            top_k=top_k,
+        )
 
         latency_ms = (time.perf_counter() - start_time) * 1000
         return PredictResponse(
@@ -132,6 +163,139 @@ class RelationPredictor:
             predictions=predictions,
             latency_ms=latency_ms,
             model_id=self.model_id,
+        )
+
+    @torch.inference_mode()
+    def predict_open_set(
+        self,
+        *,
+        text: str,
+        head: EntitySpan,
+        tail: EntitySpan,
+        top_k: int,
+    ) -> OpenSetPredictResponse:
+        if self.open_set_config is None:
+            raise RuntimeError("this model bundle has no open-set calibration")
+
+        start_time = time.perf_counter()
+        model_text = self._input_text(text, head, tail)
+        encoded = self.tokenizer(
+            model_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.max_length,
+        )
+        encoded = {key: value.to(self.device) for key, value in encoded.items()}
+        logits = self.model(**self._model_inputs(encoded))
+        probabilities = self._probabilities(logits[0], calibrated=True)
+        predictions = self._decode_row(probabilities, top_k=top_k)
+
+        threshold = float(self.open_set_config["abstention_threshold"])
+        temperature = float(self.open_set_config["temperature"])
+        accepted = float(probabilities.max().item()) >= threshold
+
+        return OpenSetPredictResponse(
+            head=head.text,
+            tail=tail.text,
+            marked_text=model_text,
+            predictions=predictions,
+            latency_ms=(time.perf_counter() - start_time) * 1000,
+            model_id=self.model_id,
+            decision="KNOWN_RELATION" if accepted else "UNKNOWN_RELATION",
+            accepted=accepted,
+            threshold=threshold,
+            temperature=temperature,
+        )
+
+    @torch.inference_mode()
+    def explain(
+        self,
+        *,
+        text: str,
+        head: EntitySpan,
+        tail: EntitySpan,
+        top_evidence: int,
+    ) -> ExplainResponse:
+        start_time = time.perf_counter()
+        model_text = self._input_text(text, head, tail)
+        encoded = self.tokenizer(
+            model_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.max_length,
+        )
+        encoded = {key: value.to(self.device) for key, value in encoded.items()}
+
+        baseline_logits = self.model(**self._model_inputs(encoded))
+        baseline_probabilities = self._probabilities(baseline_logits[0])
+        predicted_index = int(torch.argmax(baseline_probabilities).item())
+        baseline_confidence = float(baseline_probabilities[predicted_index].item())
+
+        token_ids = encoded["input_ids"][0]
+        marker_ids = {
+            self.tokenizer.convert_tokens_to_ids(marker)
+            for marker in ENTITY_MARKERS
+        }
+        excluded = set(self.tokenizer.all_special_ids).union(marker_ids)
+
+        candidate_positions = [
+            position
+            for position, token_id in enumerate(token_ids.tolist())
+            if token_id not in excluded
+        ]
+
+        replacement_id = self.tokenizer.mask_token_id
+        if replacement_id is None:
+            replacement_id = self.tokenizer.unk_token_id
+        if replacement_id is None:
+            raise RuntimeError("tokenizer has neither mask_token nor unk_token")
+
+        evidence: list[ExplanationToken] = []
+        if candidate_positions:
+            occluded_ids = token_ids.repeat(len(candidate_positions), 1)
+            for row, position in enumerate(candidate_positions):
+                occluded_ids[row, position] = replacement_id
+
+            occluded_attention = encoded["attention_mask"].repeat(
+                len(candidate_positions),
+                1,
+            )
+            occluded = {
+                "input_ids": occluded_ids,
+                "attention_mask": occluded_attention,
+            }
+            occluded_logits = self.model(**self._model_inputs(occluded))
+            occluded_probabilities = self._probabilities(occluded_logits)
+
+            for row, position in enumerate(candidate_positions):
+                confidence = float(
+                    occluded_probabilities[row, predicted_index].item()
+                )
+                token = self.tokenizer.convert_ids_to_tokens(
+                    int(token_ids[position].item())
+                )
+                evidence.append(
+                    ExplanationToken(
+                        token=str(token),
+                        position=position,
+                        confidence_drop=baseline_confidence - confidence,
+                    )
+                )
+
+        evidence.sort(key=lambda item: item.confidence_drop, reverse=True)
+        metadata = self.label_map[str(predicted_index)]
+
+        return ExplainResponse(
+            model_id=self.model_id,
+            relation=Prediction(
+                relation_id=metadata["relation_id"],
+                relation_name=metadata["relation_name"],
+                confidence=baseline_confidence,
+            ),
+            baseline_confidence=baseline_confidence,
+            evidence=evidence[:top_evidence],
+            method="token_occlusion",
+            latency_ms=(time.perf_counter() - start_time) * 1000,
         )
 
     @torch.inference_mode()
@@ -156,7 +320,7 @@ class RelationPredictor:
         )
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
         logits = self.model(**self._model_inputs(encoded))
-        probabilities = torch.softmax(logits, dim=-1)
+        probabilities = self._probabilities(logits)
 
         items = [
             PredictionItem(
