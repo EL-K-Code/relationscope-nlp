@@ -7,6 +7,7 @@ from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException
 
+from relationscope.api.observability import RequestLoggingMiddleware
 from relationscope.data.schema import (
     BatchPredictRequest,
     BatchPredictResponse,
@@ -25,6 +26,7 @@ app = FastAPI(
     version="0.1.0",
     description="Production Relation Extraction & Knowledge Structuring API",
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @lru_cache(maxsize=1)
