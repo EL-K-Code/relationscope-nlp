@@ -23,6 +23,7 @@ dependencies = [
 legacy = [
   "matplotlib>=3.9",
   "tensorflow>=2.19,<2.20",
+  "sentencepiece>=0.2",
 ]
 
 [dependency-groups]
