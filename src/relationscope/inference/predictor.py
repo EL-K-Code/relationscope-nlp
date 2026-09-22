@@ -9,7 +9,10 @@ import torch
 
 from relationscope.data.markers import mark_character_spans
 from relationscope.data.schema import EntitySpan, Prediction, PredictResponse
-from relationscope.models.entity_classifier import EntityAwareRelationClassifier, marker_positions
+from relationscope.models.entity_classifier import (
+    EntityAwareRelationClassifier,
+    marker_positions,
+)
 
 
 def resolve_device(requested: str = "auto") -> torch.device:
@@ -33,10 +36,11 @@ class RelationPredictor:
         self.bundle_dir = bundle_dir
         self.device = resolve_device(device)
         self.max_length = max_length
-        self.model, self.tokenizer, self.label_map = EntityAwareRelationClassifier.load_bundle(
+        loaded = EntityAwareRelationClassifier.load_bundle(
             bundle_dir,
             device=self.device,
         )
+        self.model, self.tokenizer, self.label_map = loaded
         self.model_id = bundle_dir.name
 
     @torch.inference_mode()
@@ -58,7 +62,10 @@ class RelationPredictor:
             max_length=self.max_length,
         )
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
-        head_pos, tail_pos = marker_positions(encoded["input_ids"], self.tokenizer)
+        head_pos, tail_pos = marker_positions(
+            encoded["input_ids"],
+            self.tokenizer,
+        )
 
         logits = self.model(
             encoded["input_ids"],
