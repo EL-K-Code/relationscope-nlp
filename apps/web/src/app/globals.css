@@ -727,3 +727,94 @@ tbody tr:last-child td {
     height: 19px;
   }
 }
+
+
+.sampleLink {
+  color: var(--accent);
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.sampleLink:hover {
+  text-decoration: underline;
+}
+
+.knowledgeGraph {
+  margin-top: 22px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #0a0d13;
+  overflow: hidden;
+}
+
+.graphHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.graphHeader small,
+.graphHeader strong {
+  display: block;
+}
+
+.graphHeader small {
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.graphHeader strong {
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.graphHeader > span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.graphCanvas {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.graphCanvas svg {
+  display: block;
+  min-width: 720px;
+  width: 100%;
+  height: auto;
+}
+
+.graphEdge {
+  stroke: #394256;
+  stroke-width: 1.4;
+  opacity: 0.8;
+}
+
+.graphCanvas marker path {
+  fill: #627089;
+}
+
+.graphNode {
+  fill: #131a22;
+  stroke: #526077;
+  stroke-width: 1.2;
+}
+
+.nodeLabel {
+  fill: #dce1ea;
+  text-anchor: middle;
+  font-size: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.edgeLabel {
+  fill: #7d8ba2;
+  text-anchor: middle;
+  font-size: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
