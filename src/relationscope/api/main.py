@@ -14,6 +14,7 @@ from relationscope.data.schema import (
     ExplainRequest,
     ExplainResponse,
     ModelInfoResponse,
+    OpenSetPredictRequest,
     OpenSetPredictResponse,
     PredictRequest,
     PredictResponse,
@@ -78,13 +79,14 @@ def predict_relation(request: PredictRequest) -> PredictResponse:
 
 
 @app.post("/v1/relations:predict-open-set", response_model=OpenSetPredictResponse)
-def predict_relation_open_set(request: PredictRequest) -> OpenSetPredictResponse:
+def predict_relation_open_set(request: OpenSetPredictRequest) -> OpenSetPredictResponse:
     try:
         return get_predictor().predict_open_set(
             text=request.text,
             head=request.head,
             tail=request.tail,
             top_k=request.top_k,
+            profile=request.profile,
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
