@@ -25,6 +25,7 @@ import {
   getMetricsSummary,
   getModelInfo,
   getModelRegistry,
+  getRelationCatalog,
   predictOpenSet,
   predictRelation,
   submitFeedback,
@@ -46,6 +47,7 @@ import type {
   OpenSetPredictResponse,
   OpenSetProfile,
   PredictResponse,
+  RelationCatalogItem,
 } from "@/lib/types";
 
 type Tab = "extract" | "batch" | "ops" | "lab";
@@ -111,6 +113,7 @@ export function RelationScopeStudio() {
   const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
   const [registry, setRegistry] = useState<ModelRegistry | null>(null);
+  const [relations, setRelations] = useState<RelationCatalogItem[]>([]);
   const [opsBusy, setOpsBusy] = useState(false);
 
   useEffect(() => {
@@ -124,6 +127,10 @@ export function RelationScopeStudio() {
       .catch((reason: unknown) =>
         setModelError(reason instanceof Error ? reason.message : "Model offline"),
       );
+
+    getRelationCatalog()
+      .then((catalog) => setRelations(catalog.items))
+      .catch(() => setRelations([]));
   }, []);
 
   useEffect(() => {
@@ -200,7 +207,13 @@ export function RelationScopeStudio() {
           threshold: openSet.threshold,
         },
         verdict,
-        corrected_relation_id: null,
+        corrected_relation_id:
+          verdict === "correct"
+            ? relations.find(
+                (item) =>
+                  item.relation_name.toLowerCase() === correction.trim().toLowerCase(),
+              )?.relation_id ?? null
+            : null,
         corrected_relation_name:
           verdict === "correct" ? correction.trim() : null,
         consent_to_store_text: feedbackConsent,
@@ -655,10 +668,19 @@ export function RelationScopeStudio() {
                 </div>
                 <div className="correctionRow">
                   <input
+                    list="relation-catalog"
                     placeholder="Correct relation name"
                     value={correction}
                     onChange={(event) => setCorrection(event.target.value)}
                   />
+                  <datalist id="relation-catalog">
+                    {relations.map((item) => (
+                      <option
+                        key={item.relation_id}
+                        value={item.relation_name}
+                      />
+                    ))}
+                  </datalist>
                   <button
                     className="secondaryButton"
                     onClick={() => void sendFeedback("correct")}
