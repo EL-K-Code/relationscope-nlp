@@ -89,3 +89,35 @@ variable "max_web_instances" {
   type    = number
   default = 3
 }
+
+
+variable "ops_bucket_name" {
+  type        = string
+  description = "Optional globally unique GCS bucket for v2 telemetry, feedback and batch job state. Defaults to <project_id>-relationscope-ops."
+  default     = null
+  nullable    = true
+}
+
+variable "ops_retention_days" {
+  type        = number
+  description = "Lifecycle retention for v2 operational JSON objects."
+  default     = 90
+}
+
+variable "task_queue_name" {
+  type        = string
+  description = "Cloud Tasks queue used for asynchronous batch inference."
+  default     = "relationscope-batch"
+}
+
+variable "task_max_concurrent_dispatches" {
+  type        = number
+  description = "Maximum number of batch worker callbacks dispatched concurrently."
+  default     = 1
+}
+
+variable "task_max_dispatches_per_second" {
+  type        = number
+  description = "Maximum Cloud Tasks dispatch rate for batch inference."
+  default     = 1
+}
