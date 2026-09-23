@@ -1,7 +1,12 @@
 import type {
   BatchInput,
-  ExplainResponse,
+  BatchJobResponse,
+  BatchJobSummary,
+  FeedbackResponse,
+  InfluenceExplainResponse,
+  MetricsSummary,
   ModelInfo,
+  ModelRegistry,
   OpenSetPredictResponse,
   OpenSetProfile,
   PredictResponse,
@@ -28,7 +33,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getModelInfo(): Promise<ModelInfo> {
-  return request<ModelInfo>("/v1/model");
+  return request<ModelInfo>("/v2/model");
 }
 
 export async function predictRelation(
@@ -50,7 +55,7 @@ export async function predictOpenSet(
   topK = 5,
   profile: OpenSetProfile = "balanced",
 ): Promise<OpenSetPredictResponse> {
-  return request<OpenSetPredictResponse>("/v1/relations:predict-open-set", {
+  return request<OpenSetPredictResponse>("/v2/relations:predict-open-set", {
     method: "POST",
     body: JSON.stringify({ text, head, tail, top_k: topK, profile }),
   });
@@ -60,39 +65,69 @@ export async function explainRelation(
   text: string,
   head: BatchInput["head"],
   tail: BatchInput["tail"],
-  topEvidence = 12,
-): Promise<ExplainResponse> {
-  return request<ExplainResponse>("/v1/relations:explain", {
+  profile: OpenSetProfile = "balanced",
+  targetRelationId?: string,
+): Promise<InfluenceExplainResponse> {
+  return request<InfluenceExplainResponse>("/v2/relations:explain", {
     method: "POST",
     body: JSON.stringify({
       text,
       head,
       tail,
-      top_evidence: topEvidence,
+      profile,
+      target_relation_id: targetRelationId ?? null,
     }),
   });
 }
 
-export async function predictBatch(
-  examples: BatchInput[],
-  topK = 1,
-): Promise<PredictResponse[]> {
-  const payload = await request<{
-    items: Omit<PredictResponse, "latency_ms" | "model_id">[];
-    latency_ms: number;
+export async function submitFeedback(input: {
+  text: string;
+  head: BatchInput["head"];
+  tail: BatchInput["tail"];
+  prediction: {
     model_id: string;
-    batch_size: number;
-  }>("/v1/relations:predict-batch", {
+    relation_id: string;
+    relation_name: string;
+    confidence: number;
+    decision: "KNOWN_RELATION" | "UNKNOWN_RELATION";
+    profile: OpenSetProfile;
+    threshold: number;
+  };
+  verdict: "confirm" | "correct" | "unknown" | "skip";
+  corrected_relation_id?: string | null;
+  corrected_relation_name?: string | null;
+  note?: string | null;
+  consent_to_store_text: boolean;
+}): Promise<FeedbackResponse> {
+  return request<FeedbackResponse>("/v2/feedback", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createBatchJob(
+  examples: BatchInput[],
+  profile: OpenSetProfile,
+  topK = 1,
+): Promise<BatchJobSummary> {
+  return request<BatchJobSummary>("/v2/batch-jobs", {
     method: "POST",
     body: JSON.stringify({
       examples: examples.map(({ text, head, tail }) => ({ text, head, tail })),
       top_k: topK,
+      profile,
     }),
   });
+}
 
-  return payload.items.map((item) => ({
-    ...item,
-    latency_ms: payload.latency_ms / Math.max(payload.batch_size, 1),
-    model_id: payload.model_id,
-  }));
+export async function getBatchJob(jobId: string): Promise<BatchJobResponse> {
+  return request<BatchJobResponse>(`/v2/batch-jobs/${jobId}`);
+}
+
+export async function getMetricsSummary(limit = 500): Promise<MetricsSummary> {
+  return request<MetricsSummary>(`/v2/metrics/summary?limit=${limit}`);
+}
+
+export async function getModelRegistry(): Promise<ModelRegistry> {
+  return request<ModelRegistry>("/v2/models");
 }
