@@ -39,6 +39,12 @@ import type {
 
 type Tab = "extract" | "batch" | "lab";
 
+const PROFILE_ORDER: OpenSetProfile[] = [
+  "high_coverage",
+  "balanced",
+  "high_safety",
+];
+
 const DEMO_TEXT = "Marie Curie was born in Warsaw in 1867.";
 
 function resolveUniqueSpan(text: string, mention: string) {
