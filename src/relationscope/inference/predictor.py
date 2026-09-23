@@ -24,7 +24,12 @@ from relationscope.data.schema import (
     PredictionItem,
     PredictResponse,
 )
-from relationscope.data.v2_schema import InfluenceExplainResponse, WordInfluence
+from relationscope.data.v2_schema import (
+    InfluenceExplainResponse,
+    RelationCatalogItem,
+    RelationCatalogResponse,
+    WordInfluence,
+)
 from relationscope.models.entity_classifier import (
     EntityAwareRelationClassifier,
     marker_positions,
@@ -158,6 +163,19 @@ class RelationPredictor:
             if open_set_path.exists()
             else None
         )
+
+    def relation_catalog(self) -> RelationCatalogResponse:
+        items = [
+            RelationCatalogItem(
+                relation_id=metadata["relation_id"],
+                relation_name=metadata["relation_name"],
+            )
+            for _, metadata in sorted(
+                self.label_map.items(),
+                key=lambda item: int(item[0]),
+            )
+        ]
+        return RelationCatalogResponse(items=items)
 
     def info(self) -> ModelInfoResponse:
         return ModelInfoResponse(
