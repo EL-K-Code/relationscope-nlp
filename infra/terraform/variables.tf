@@ -14,6 +14,21 @@ variable "artifact_repository" {
   default = "relationscope"
 }
 
+variable "cloud_build_submitter_member" {
+  type        = string
+  description = "Optional IAM member allowed to submit Cloud Build jobs, e.g. user:name@example.com."
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.cloud_build_submitter_member == null ||
+      can(regex("^(user|serviceAccount):[^[:space:]]+$", var.cloud_build_submitter_member))
+    )
+    error_message = "cloud_build_submitter_member must be null or an IAM member such as user:name@example.com."
+  }
+}
+
 variable "model_bucket_name" {
   type        = string
   description = "Globally unique GCS bucket for versioned model bundles."
