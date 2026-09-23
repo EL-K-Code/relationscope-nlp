@@ -575,38 +575,117 @@ export function RelationScopeStudio() {
 
         {tab === "lab" && (
           <div className="labGrid">
-            <article className="panel metricCard">
-              <small>EXPERIMENTAL LINEAGE</small>
-              <h3>LSTM → Attention → T5 → Transformer</h3>
-              <p>
-                The production system keeps the ENSAI notebook as an explicit
-                research lineage rather than replacing it.
-              </p>
-            </article>
-            <article className="panel metricCard">
-              <small>ABLATION</small>
-              <h3>Do entity markers actually help?</h3>
-              <p>
-                Raw CLS, marked CLS and entity-pair pooling are trained under
-                matched conditions and compared on Macro-F1 and calibration.
-              </p>
-            </article>
-            <article className="panel metricCard">
-              <small>OPEN SET</small>
-              <h3>Never-seen relation detection</h3>
-              <p>
-                Relation-level holdouts evaluate whether confidence can support
-                a defensible UNKNOWN_RELATION decision.
-              </p>
-            </article>
-            <article className="panel metricCard">
-              <small>QUALITY</small>
-              <h3>No metric without reproduction</h3>
-              <p>
-                README and CV claims are intentionally blocked until committed
-                scripts reproduce the result on a frozen protocol.
-              </p>
-            </article>
+            <section className="panel labSummaryCard">
+              <div>
+                <span className="step">PROMOTED MODEL</span>
+                <h2>ModernBERT with entity-aware selective prediction</h2>
+                <p>
+                  Frozen evaluation on 56 known relations plus 16 final unseen
+                  relations. Thresholds were selected without tuning on the
+                  final unseen test split.
+                </p>
+              </div>
+              <div className="labSummaryMetrics">
+                <div>
+                  <small>KNOWN TOP-3</small>
+                  <strong>{confidence(FINAL_METRICS.knownTop3)}</strong>
+                </div>
+                <div>
+                  <small>KNOWN ECE</small>
+                  <strong>{confidence(FINAL_METRICS.knownEce)}</strong>
+                </div>
+                <div>
+                  <small>UNKNOWN REJECTION</small>
+                  <strong>{confidence(FINAL_METRICS.unknownRejection)}</strong>
+                </div>
+                <div>
+                  <small>CLIENT P50</small>
+                  <strong>{FINAL_METRICS.warmClientMedianMs.toFixed(0)} ms</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel chartPanel">
+              <RiskCoverageChart />
+            </section>
+
+            <section className="panel profileLabCard">
+              <div className="panelHeader">
+                <div>
+                  <span className="step">PROFILES</span>
+                  <h2>Frozen operating points</h2>
+                </div>
+                <ShieldCheck size={20} />
+              </div>
+              <div className="profileMatrix">
+                {PROFILE_ORDER.map((item) => {
+                  const metrics = PROFILE_METRICS[item];
+                  return (
+                    <article key={item}>
+                      <div className="profileMatrixHead">
+                        <strong>{metrics.label}</strong>
+                        <span>{confidence(metrics.threshold)}</span>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>Known coverage</dt>
+                          <dd>{confidence(metrics.knownAcceptance)}</dd>
+                        </div>
+                        <div>
+                          <dt>Accepted accuracy</dt>
+                          <dd>{confidence(metrics.acceptedKnownAccuracy)}</dd>
+                        </div>
+                        <div>
+                          <dt>Unknown rejection</dt>
+                          <dd>{confidence(metrics.unknownRejection)}</dd>
+                        </div>
+                        <div>
+                          <dt>Unknown F1</dt>
+                          <dd>{confidence(metrics.unknownF1)}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="panel protocolCard">
+              <div className="panelHeader">
+                <div>
+                  <span className="step">EVALUATION</span>
+                  <h2>Open-set protocol</h2>
+                </div>
+                <FlaskConical size={20} />
+              </div>
+              <p className="protocolName">{EVALUATION_PROTOCOL.name}</p>
+              <div className="protocolGrid">
+                <div>
+                  <small>KNOWN RELATIONS</small>
+                  <strong>{EVALUATION_PROTOCOL.knownRelations}</strong>
+                </div>
+                <div>
+                  <small>CALIBRATION UNKNOWN</small>
+                  <strong>{EVALUATION_PROTOCOL.calibrationUnknownRelations}</strong>
+                </div>
+                <div>
+                  <small>FINAL UNSEEN</small>
+                  <strong>{EVALUATION_PROTOCOL.finalUnknownRelations}</strong>
+                </div>
+                <div>
+                  <small>TRAIN KNOWN</small>
+                  <strong>{EVALUATION_PROTOCOL.trainKnown.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <small>TEST KNOWN</small>
+                  <strong>{EVALUATION_PROTOCOL.testKnown.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <small>TEST UNKNOWN</small>
+                  <strong>{EVALUATION_PROTOCOL.testUnknown.toLocaleString()}</strong>
+                </div>
+              </div>
+            </section>
 
             <section className="panel architectureCard">
               <div className="panelHeader">
@@ -621,13 +700,22 @@ export function RelationScopeStudio() {
                 <b>→</b>
                 <span>HEAD / TAIL markers</span>
                 <b>→</b>
-                <span>Transformer encoder</span>
+                <span>ModernBERT</span>
                 <b>→</b>
-                <span>Entity-aware pooling</span>
+                <span>Entity-pair pooling</span>
                 <b>→</b>
-                <span>Calibration</span>
+                <span>Temperature scaling</span>
+                <b>→</b>
+                <span>Profile threshold</span>
                 <b>→</b>
                 <span>Relation / UNKNOWN</span>
+              </div>
+              <div className="deploymentLine">
+                <span>FastAPI</span>
+                <span>Cloud Run · CPU</span>
+                <span>GCS model bundle</span>
+                <span>SHA-256 manifest</span>
+                <span>Private backend IAM</span>
               </div>
             </section>
           </div>
