@@ -7,16 +7,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.18 /uv /uvx /bin/
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN uv sync --no-dev \
+RUN uv pip install \
+      --system \
+      --no-cache \
+      --torch-backend=cpu \
+      . \
     && useradd --create-home --uid 10001 relationscope \
     && mkdir -p /tmp/relationscope \
     && chown -R relationscope:relationscope /tmp/relationscope /app
-
-ENV PATH="/app/.venv/bin:$PATH"
 
 USER relationscope
 
