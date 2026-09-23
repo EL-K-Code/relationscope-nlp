@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "release": "v1.0.0",
+  "model": {
+    "model_version": "modernbert-open-set-v1.1",
+    "base_model": "answerdotai/ModernBERT-base",
+    "pooling_mode": "entity_pair",
+    "input_view": "marked",
+    "temperature": 1.086841344833374,
+    "default_profile": "balanced"
+  },
+  "protocol": {
+    "name": "fewrel_open_set_56_known_8_calibration_unknown_16_test_unknown",
+    "known_relations": 56,
+    "calibration_unknown_relations": 8,
+    "final_unseen_relations": 16,
+    "split_sizes": {
+      "train_known": 31360,
+      "validation_known": 3920,
+      "test_known": 3920,
+      "calibration_unknown": 5600,
+      "test_unknown": 11200
+    }
+  },
+  "known_test": {
+    "accuracy": 0.8920918367346938,
+    "macro_f1": 0.8915730905612583,
+    "micro_f1": 0.8920918367346938,
+    "top3_accuracy": 0.9801020408163266,
+    "ece": 0.019492929272961864
+  },
+  "final_unseen_test_balanced": {
+    "threshold": 0.967,
+    "auroc": 0.8032652036260932,
+    "auprc": 0.9049622513200395,
+    "fpr95": 0.5785714285714286,
+    "unknown_f1": 0.8529557649817379,
+    "known_acceptance": 0.6125,
+    "unknown_rejection": 0.8444642857142857
+  },
+  "profiles": {
+    "high_coverage": {
+      "threshold": 0.924,
+      "known_acceptance": 0.724,
+      "accepted_known_accuracy": 0.9767,
+      "unknown_rejection": 0.7379,
+      "unknown_f1": 0.8044
+    },
+    "balanced": {
+      "threshold": 0.967,
+      "known_acceptance": 0.6125,
+      "accepted_known_accuracy": 0.9867,
+      "unknown_rejection": 0.8445,
+      "unknown_f1": 0.853
+    },
+    "high_safety": {
+      "threshold": 0.978,
+      "known_acceptance": 0.5543,
+      "accepted_known_accuracy": 0.9894,
+      "unknown_rejection": 0.8863,
+      "unknown_f1": 0.868
+    }
+  },
+  "risk_coverage_known_test": [
+    {
+      "coverage": 1,
+      "risk": 0.108
+    },
+    {
+      "coverage": 0.9,
+      "risk": 0.062
+    },
+    {
+      "coverage": 0.8,
+      "risk": 0.034
+    },
+    {
+      "coverage": 0.7,
+      "risk": 0.019
+    },
+    {
+      "coverage": 0.6,
+      "risk": 0.013
+    },
+    {
+      "coverage": 0.5,
+      "risk": 0.009
+    }
+  ],
+  "latency": {
+    "gpu_sequential_ms": {
+      "mean": 22.04,
+      "median": 21.81,
+      "p95": 23.32,
+      "p99": 28.49
+    },
+    "gpu_batch8_throughput_examples_per_second": 191.24,
+    "cloud_run_cpu_warm_ms": {
+      "application_mean": 94.2,
+      "application_median": 87.2,
+      "client_mean": 157.3,
+      "client_median": 138
+    }
+  },
+  "deployment": {
+    "platform": "Google Cloud Run",
+    "api_visibility": "private",
+    "web_visibility": "public",
+    "model_store": "Google Cloud Storage",
+    "api_resources": "2 vCPU / 4 GiB",
+    "scale_to_zero": true
+  }
+}

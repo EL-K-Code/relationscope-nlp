@@ -1,14 +1,237 @@
 # RelationScope NLP
 
-**Production-grade Relation Extraction & Knowledge Structuring Engine**
+**Production-grade relation extraction with calibrated open-set abstention**
 
-RelationScope turns text + an explicit entity pair into a ranked relation prediction, calibrated confidence, optional `UNKNOWN_RELATION` abstention, machine-readable triples and token-level evidence.
+RelationScope turns a sentence plus an explicit HEAD/TAIL entity pair into ranked relation predictions, calibrated confidence, and a defensible `UNKNOWN_RELATION` decision when the model is not confident enough.
 
-The project is the engineering continuation of an ENSAI Advanced NLP lab by **Maxime Ferret and Alex Komla Labou**. The original experimental path is preserved instead of being hidden behind a modern Transformer.
+The project extends an ENSAI Advanced NLP lab by **Maxime Ferret and Alex Komla Labou** into a reproducible ML system with controlled ablations, open-set evaluation, FastAPI serving, a Next.js product interface, model-bundle integrity checks, Terraform infrastructure, and deployment on Google Cloud Run.
 
-> **Current status:** the full software and experiment scaffolding is implemented. Model-training and benchmark runs are intentionally pending. No new portfolio metric is claimed before reproduction.
+> **Status: v1.0.0 production release candidate.**  
+> The promoted model is deployed and serving live inference through a public Next.js frontend backed by a private Cloud Run API.
 
-## Research story
+## Highlights
+
+- **ModernBERT-base** with explicit HEAD/TAIL entity markers.
+- **Entity-aware pooling:** CLS + HEAD + TAIL + |HEAD − TAIL|.
+- **56 known relations** with **16 completely unseen final-test relations**.
+- Temperature-scaled confidence with three frozen operating profiles.
+- `UNKNOWN_RELATION` abstention for open-set inference.
+- FastAPI private backend + public Next.js frontend.
+- Model bundle stored in GCS with SHA-256 manifest verification.
+- Terraform-managed Cloud Run, IAM, Artifact Registry, and GCS.
+- CPU production inference on Cloud Run with scale-to-zero.
+
+## Production model
+
+Promoted bundle:
+
+```text
+modernbert-open-set-v1.1
+```
+
+Protocol:
+
+```text
+fewrel_open_set_56_known_8_calibration_unknown_16_test_unknown
+```
+
+Split sizes:
+
+| Split | Examples |
+|---|---:|
+| train_known | 31,360 |
+| validation_known | 3,920 |
+| test_known | 3,920 |
+| calibration_unknown | 5,600 |
+| test_unknown | 11,200 |
+
+Relation allocation:
+
+- 56 known relations for classifier training/evaluation.
+- 8 different relations used only for unknown-threshold calibration.
+- 16 untouched relations used as the final unseen-relation test.
+
+The final unseen relations are not used to tune the operating threshold.
+
+## Final evaluation
+
+### Known-relation test set
+
+| Metric | Result |
+|---|---:|
+| Accuracy | **89.21%** |
+| Macro-F1 | **89.16%** |
+| Micro-F1 | **89.21%** |
+| Top-3 accuracy | **98.01%** |
+| ECE | **1.95%** |
+
+### Final unseen-relation test
+
+| Metric | Result |
+|---|---:|
+| OOD AUROC | **80.33%** |
+| OOD AUPRC | **90.50%** |
+| FPR95 | **57.86%** |
+| Unknown-F1 | **85.30%** |
+| Known acceptance | **61.25%** |
+| Unknown rejection | **84.45%** |
+
+These final-test open-set numbers use the **balanced threshold 0.967**, frozen from validation-known + calibration-unknown data.
+
+## Operating profiles
+
+Thresholds were selected before evaluation on the final unseen-relation test set.
+
+| Profile | Threshold | Known coverage | Accuracy on accepted known | Unknown rejection | Unknown-F1 |
+|---|---:|---:|---:|---:|---:|
+| High coverage | 0.924 | 72.40% | 97.67% | 73.79% | 80.44% |
+| **Balanced** | **0.967** | **61.25%** | **98.67%** | **84.45%** | **85.30%** |
+| High safety | 0.978 | 55.43% | 98.94% | 88.63% | 86.80% |
+
+`balanced` is the production default.
+
+## Selective prediction
+
+Known-test risk decreases strongly as the model abstains on lower-confidence examples:
+
+| Coverage | Error risk | Accuracy |
+|---:|---:|---:|
+| 100% | 10.8% | 89.2% |
+| 90% | 6.2% | 93.8% |
+| 80% | 3.4% | 96.6% |
+| 70% | 1.9% | 98.1% |
+| 60% | 1.3% | 98.7% |
+| 50% | 0.9% | 99.1% |
+
+This curve concerns selective classification among known examples only.
+
+## Latency
+
+### GPU benchmark
+
+Sequential open-set inference on GPU:
+
+- mean: **22.04 ms**
+- median: **21.81 ms**
+- P95: **23.32 ms**
+- P99: **28.49 ms**
+- throughput: **45.37 examples/s**
+
+Batch-8 reached approximately **191 examples/s**.
+
+### Cloud Run CPU — warm
+
+Production Cloud Run configuration: **2 vCPU / 4 GiB**.
+
+- application inference mean: **94.2 ms**
+- application inference median: **87.2 ms**
+- end-to-end client mean: **157.3 ms**
+- end-to-end client median: **138.0 ms**
+
+The CPU benchmark is intentionally reported separately from the GPU benchmark. Scale-to-zero cold start is not included in the warm figures above.
+
+## Entity-information ablation
+
+ModernBERT-base was evaluated under matched conditions on the Closed-Set-80 protocol:
+
+| Condition | Input | Pooling | Test Accuracy | Test Macro-F1 | Top-3 |
+|---|---|---|---:|---:|---:|
+| A | raw | CLS | 63.98% | 63.02% | 86.73% |
+| B | marked | CLS | 79.18% | 78.84% | 93.13% |
+| C | marked | entity-pair | **85.02%** | **84.89%** | **95.96%** |
+
+Effects on test Macro-F1:
+
+- entity markers: **+15.82 percentage points**
+- entity-aware pooling beyond markers: **+6.05 percentage points**
+- full structured entity information vs raw CLS: **+21.87 percentage points**
+
+## System architecture
+
+```text
+Browser
+   |
+   v
+Public Next.js service
+Google Cloud Run
+   |
+   | Google-signed identity token
+   v
+Private FastAPI service
+Google Cloud Run
+   |
+   | read-only IAM
+   v
+Versioned GCS model bundle
+   |
+   v
+ModernBERT + temperature scaling
+   |
+   v
+Relation prediction / UNKNOWN_RELATION
+```
+
+The browser never receives Google Cloud credentials. The Next.js server-side proxy obtains an identity token using its Cloud Run service account and invokes the private API.
+
+## API
+
+```text
+GET  /health
+GET  /ready
+GET  /v1/model
+
+POST /v1/relations:predict
+POST /v1/relations:predict-batch
+POST /v1/relations:predict-open-set
+POST /v1/relations:explain
+```
+
+Example open-set response:
+
+```json
+{
+  "model_id": "modernbert-open-set-v1.1",
+  "decision": "UNKNOWN_RELATION",
+  "accepted": false,
+  "profile": "balanced",
+  "threshold": 0.967
+}
+```
+
+## Frontend
+
+The Next.js interface includes:
+
+- sentence + HEAD/TAIL entity inputs;
+- High coverage / Balanced / High safety profile selector;
+- top-k ranked relations;
+- confidence, threshold, and decision margin;
+- KNOWN vs UNKNOWN decision card;
+- token-occlusion evidence;
+- CSV batch inference and export;
+- extracted knowledge graph;
+- production KPI cards;
+- risk–coverage visualization;
+- frozen evaluation protocol and operating-point dashboard.
+
+## Model-bundle integrity
+
+The promoted model lives outside Git and is published to GCS.
+
+At runtime the service:
+
+1. downloads the configured model prefix;
+2. verifies the bundle against a SHA-256 manifest;
+3. atomically promotes the downloaded directory;
+4. loads the encoder, classifier, tokenizer, calibration settings, and relation mapping.
+
+Current promoted version:
+
+```text
+modernbert-open-set-v1.1
+```
+
+## Research lineage
 
 ```text
 ENSAI notebook
@@ -25,295 +248,84 @@ ENSAI notebook
       controlled marker ablation
                 |
                 v
-      entity-aware Transformer
+      ModernBERT + entity-aware pooling
                 |
                 v
-      calibration + abstention
+      temperature scaling
                 |
                 v
       unseen-relation detection
                 |
                 v
-      FastAPI + batch inference
+      selective prediction
                 |
                 v
-      Next.js product interface
+      FastAPI + Next.js
                 |
                 v
-      private API on Cloud Run
+      Google Cloud production deployment
 ```
-
-## What is implemented
-
-### Notebook lineage
-
-Committed reproduction scripts preserve:
-
-- the original seven-relation LSTM;
-- the original 70/30 then 80/20 split logic;
-- Seq2Seq LSTM + attention;
-- T5 generation;
-- legacy 32-token T5 target evaluation and corrected non-truncating evaluation;
-- the K = 7, 10, 15, 20, 30 LSTM/BiLSTM scaling study.
-
-See:
-
-- `docs/notebook_lineage.md`
-- `docs/notebook_reference_metrics.md`
-
-Historical notebook metrics are stored only as reproduction targets, not as final RelationScope claims.
-
-### Production NLP track
-
-Implemented:
-
-- FewRel Closed-Set-80 protocol;
-- word + character TF-IDF logistic-regression baseline;
-- ModernBERT-compatible Transformer classifier;
-- HEAD / TAIL special tokens;
-- CLS-only and entity-aware pooling modes;
-- controlled entity-marker ablation;
-- Accuracy, Macro-F1, Micro-F1, Top-3 Accuracy and ECE;
-- temperature scaling;
-- risk-coverage analysis;
-- relation-level open-set benchmark;
-- `UNKNOWN_RELATION` abstention;
-- OOD AUROC / AUPRC / FPR95 / Unknown-F1;
-- token-occlusion evidence;
-- detailed error-analysis export;
-- latency benchmark;
-- generated model card;
-- explicit model-promotion gates.
-
-### Product/API track
-
-FastAPI endpoints:
-
-```text
-GET  /health
-GET  /ready
-GET  /v1/model
-
-POST /v1/relations:predict
-POST /v1/relations:predict-batch
-POST /v1/relations:predict-open-set
-POST /v1/relations:explain
-```
-
-The API supports:
-
-- single inference;
-- vectorized batch inference;
-- top-k relations;
-- calibrated open-set decisions;
-- token-occlusion evidence;
-- privacy-preserving structured request logging.
-
-### Frontend
-
-`apps/web` contains a Next.js App Router interface with:
-
-- sentence + HEAD/TAIL entity inputs;
-- top-k confidence visualization;
-- KNOWN vs UNKNOWN decision card;
-- evidence heatmap;
-- CSV batch import;
-- downloadable sample CSV;
-- batch result export;
-- extracted knowledge graph;
-- Model Lab explaining the research progression.
-
-### Deployment
-
-Implemented deployment architecture:
-
-```text
-Browser
-   |
-   v
-Public Next.js Cloud Run
-   |
-   | Google-signed identity token
-   v
-Private FastAPI Cloud Run
-   |
-   | read-only IAM
-   v
-Versioned GCS model bundle
-```
-
-Also included:
-
-- separate API and web Dockerfiles;
-- Docker Compose for local integration;
-- Terraform for Cloud Run / GCS / Artifact Registry / IAM;
-- keyless GitHub -> GCP deployment with Workload Identity Federation;
-- SHA-256 model artifact manifests;
-- verified model download from GCS;
-- CI for Python and Next.js.
-
-## Core model architecture
-
-Default production classifier:
-
-```text
-sentence
-  +
-[HEAD] entity [/HEAD]
-[TAIL] entity [/TAIL]
-       |
-       v
-Transformer encoder
-       |
-       +---- CLS
-       +---- HEAD representation
-       +---- TAIL representation
-       +---- abs(HEAD - TAIL)
-                   |
-                   v
-             concatenation
-                   |
-                   v
-            relation logits
-                   |
-             temperature
-              scaling
-                   |
-                   v
-         relation / abstain
-```
-
-## Entity-marker ablation
-
-The project does not assume that entity markers help. It measures the effect under matched conditions:
-
-| Condition | Input | Pooling |
-|---|---|---|
-| A | raw text | CLS |
-| B | HEAD/TAIL markers | CLS |
-| C | HEAD/TAIL markers | CLS + HEAD + TAIL + abs(HEAD-TAIL) |
-
-The result is not filled in until the experiments are actually run.
-
-## Open-set protocol
-
-The open-set extension keeps relation identities separated:
-
-```text
-56 official-train relations
-    -> classifier training
-
-8 different official-train relations
-    -> threshold calibration only
-
-16 official-validation relations
-    -> untouched final unseen-relation test
-```
-
-This prevents tuning the rejection threshold on the final unseen-relation test set.
 
 ## Repository layout
 
 ```text
 .
-├── apps/
-│   └── web/                        # Next.js recruiter/product interface
-├── data/
-│   ├── raw/
-│   └── processed/
-├── docs/
-│   ├── api.md
-│   ├── gcp_deployment.md
-│   ├── local_development.md
-│   ├── methodology.md
-│   ├── model_promotion.md
-│   ├── notebook_lineage.md
-│   ├── notebook_reference_metrics.md
-│   └── premium_experiments.md
-├── infra/
-│   └── terraform/
-├── reports/
-├── scripts/
-│   ├── download_fewrel.py
-│   ├── prepare_fewrel.py
-│   ├── reproduce_notebook_lstm.py
-│   ├── reproduce_notebook_attention.py
-│   ├── reproduce_notebook_t5.py
-│   ├── reproduce_notebook_scaling.py
-│   ├── train_tfidf_baseline.py
-│   ├── train_transformer.py
-│   ├── run_marker_ablation.py
-│   ├── prepare_open_set_fewrel.py
-│   ├── train_open_set_transformer.py
-│   ├── evaluate_model.py
-│   ├── benchmark_latency.py
-│   ├── build_model_card.py
-│   └── publish_model_bundle.py
-├── src/
-│   └── relationscope/
-│       ├── api/
-│       ├── data/
-│       ├── inference/
-│       ├── legacy/
-│       ├── models/
-│       └── training/
+├── apps/web/                     # Next.js application
+├── docs/                         # Methodology and deployment documentation
+├── infra/terraform/              # GCP infrastructure as code
+├── reports/                      # Frozen evaluation reports
+├── scripts/                      # Reproduction, training and publication scripts
+├── src/relationscope/
+│   ├── api/
+│   ├── data/
+│   ├── inference/
+│   ├── legacy/
+│   ├── models/
+│   └── training/
 ├── tests/
-├── compose.yaml
 ├── Dockerfile
-├── Makefile
+├── compose.yaml
 └── pyproject.toml
 ```
 
-## Installation
+## Local development
 
-Python 3.11-3.13 is supported. Python 3.12 is recommended.
+Python 3.12 is recommended.
 
 ```bash
 uv sync --all-groups
 ```
 
-To reproduce the TensorFlow notebook lineage later:
-
-```bash
-uv sync --all-groups --extra legacy
-```
-
-Frontend dependencies:
+Frontend:
 
 ```bash
 cd apps/web
 npm install
+npm run dev
 ```
 
-## Execution order when experiments begin
+Local environment variables are loaded from `.env` without overriding environment variables already supplied by the process.
 
-No need to run this yet. The planned order is frozen as:
+## Deployment
 
-```text
-1. tests + data integrity
-2. notebook LSTM reproduction
-3. notebook attention reproduction
-4. notebook T5 reproduction/correction
-5. notebook K-scaling reproduction
-6. TF-IDF baseline
-7. closed-set Transformer
-8. marker ablation
-9. open-set Transformer
-10. calibration / error analysis
-11. latency benchmark
-12. model promotion
-13. GCS publication
-14. Cloud Run deployment
-```
+Infrastructure is managed with Terraform. Production containers are built in Google Cloud Build and stored in Artifact Registry.
+
+The production model bucket is versioned, the API service account has read-only access to model objects, the frontend is public, and the API remains private to authorized callers.
+
+See:
+
+- `docs/gcp_deployment.md`
+- `infra/terraform/`
 
 ## Methodological guardrails
 
-- FewRel Closed-Set-80 is **not** presented as the official FewRel few-shot leaderboard protocol.
-- The legacy T5 32-token result is separated from full-target exact match.
-- Final unseen relations are not used for threshold tuning.
-- Metrics enter the README/CV only after committed scripts reproduce them.
-- Raw sentences are not written to production request logs.
-- GCP is the serving/industrialization layer; NLP experimentation remains the core of the project.
+- Closed-Set-80 is not presented as the official FewRel few-shot leaderboard protocol.
+- Final unseen relations are never used for threshold selection.
+- Calibration metrics and final-test metrics are reported separately.
+- AUPRC is not compared across splits without considering class prevalence.
+- GPU and Cloud Run CPU latency are labeled separately.
+- Token occlusion is presented as evidence-by-occlusion, not as a causal explanation.
+- Raw sentences are not committed with model artifacts or infrastructure state.
 
 ## Data and attribution
 
@@ -323,4 +335,4 @@ FewRel is provided by THUNLP. If using the dataset, cite:
 
 Official repository: https://github.com/thunlp/FewRel
 
-Raw datasets, trained weights and credentials are not committed to Git.
+Raw datasets, trained weights, Terraform variable files, and credentials are not committed to Git.
