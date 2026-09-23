@@ -118,14 +118,18 @@ export function RelationScopeStudio() {
     try {
       const head = resolveUniqueSpan(text, headText);
       const tail = resolveUniqueSpan(text, tailText);
-      const base = await predictRelation(text, head, tail, 5);
-      setPrediction(base);
 
-      if (model?.open_set_enabled) {
-        setOpenSet(await predictOpenSet(text, head, tail, 5));
+      if (model?.open_set_enabled !== false) {
+        const selective = await predictOpenSet(text, head, tail, 5, profile);
+        setOpenSet(selective);
+        setPrediction(selective);
+      } else {
+        setPrediction(await predictRelation(text, head, tail, 5));
       }
 
-      setExplanation(await explainRelation(text, head, tail, 12));
+      void explainRelation(text, head, tail, 12)
+        .then(setExplanation)
+        .catch(() => setExplanation(null));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Prediction failed.");
     } finally {
