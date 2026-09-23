@@ -48,7 +48,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
-            -backend-config="prefix=relationscope"
+            -backend-config="prefix=terraform/state"
 
       - name: Bootstrap registries, bucket and service identities
         working-directory: infra/terraform
