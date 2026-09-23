@@ -18,6 +18,7 @@ from relationscope.data.schema import (
     ExplanationToken,
     ModelInfoResponse,
     OpenSetPredictResponse,
+    OpenSetProfile,
     Prediction,
     PredictionItem,
     PredictResponse,
@@ -25,6 +26,12 @@ from relationscope.data.schema import (
 from relationscope.models.entity_classifier import (
     EntityAwareRelationClassifier,
     marker_positions,
+)
+
+SUPPORTED_OPEN_SET_PROFILES: tuple[OpenSetProfile, ...] = (
+    "high_coverage",
+    "balanced",
+    "high_safety",
 )
 
 
@@ -36,6 +43,80 @@ def resolve_device(requested: str = "auto") -> torch.device:
             return torch.device("mps")
         return torch.device("cpu")
     return torch.device(requested)
+
+
+def available_open_set_profiles(
+    config: dict[str, object] | None,
+) -> list[OpenSetProfile]:
+    """Return configured operating profiles, preserving the public profile order."""
+    if config is None:
+        return []
+
+    configured = config.get("profiles")
+    available: list[OpenSetProfile] = []
+
+    if isinstance(configured, dict):
+        for profile in SUPPORTED_OPEN_SET_PROFILES:
+            entry = configured.get(profile)
+            if isinstance(entry, dict) and "threshold" in entry:
+                available.append(profile)
+
+    # Backwards compatibility with bundles produced before named profiles existed.
+    if not available and "abstention_threshold" in config:
+        available.append("balanced")
+
+    return available
+
+
+def default_open_set_profile(
+    config: dict[str, object] | None,
+) -> OpenSetProfile | None:
+    """Resolve the default profile while remaining compatible with legacy bundles."""
+    available = available_open_set_profiles(config)
+    if not available or config is None:
+        return None
+
+    requested = config.get("default_profile")
+    for profile in available:
+        if requested == profile:
+            return profile
+
+    if "balanced" in available:
+        return "balanced"
+    return available[0]
+
+
+def resolve_open_set_threshold(
+    config: dict[str, object] | None,
+    profile: OpenSetProfile,
+) -> float:
+    """Resolve and validate the threshold for one operating profile."""
+    if config is None:
+        raise RuntimeError("open-set calibration is not available for this model")
+
+    configured = config.get("profiles")
+    raw_threshold: object | None = None
+
+    if isinstance(configured, dict):
+        entry = configured.get(profile)
+        if isinstance(entry, dict):
+            raw_threshold = entry.get("threshold")
+
+    # A legacy bundle only exposes the calibrated balanced threshold.
+    if raw_threshold is None and profile == "balanced":
+        raw_threshold = config.get("abstention_threshold")
+
+    if not isinstance(raw_threshold, (int, float)) or isinstance(raw_threshold, bool):
+        raise RuntimeError(
+            f"open-set profile {profile!r} is not configured in this model bundle"
+        )
+
+    threshold = float(raw_threshold)
+    if not 0.0 <= threshold <= 1.0:
+        raise RuntimeError(
+            f"invalid abstention threshold for profile {profile!r}: {threshold}"
+        )
+    return threshold
 
 
 class RelationPredictor:
@@ -57,7 +138,7 @@ class RelationPredictor:
         self.model_id = bundle_dir.name
 
         open_set_path = bundle_dir / "open_set_config.json"
-        self.open_set_config = (
+        self.open_set_config: dict[str, object] | None = (
             json.loads(open_set_path.read_text(encoding="utf-8"))
             if open_set_path.exists()
             else None
@@ -72,6 +153,8 @@ class RelationPredictor:
             pooling_mode=self.model.pooling_mode,
             input_view=self.model.input_view,
             open_set_enabled=self.open_set_config is not None,
+            default_open_set_profile=default_open_set_profile(self.open_set_config),
+            open_set_profiles=available_open_set_profiles(self.open_set_config),
         )
 
     def _input_text(self, text: str, head: EntitySpan, tail: EntitySpan) -> str:
@@ -173,6 +256,7 @@ class RelationPredictor:
         head: EntitySpan,
         tail: EntitySpan,
         top_k: int,
+        profile: OpenSetProfile = "balanced",
     ) -> OpenSetPredictResponse:
         if self.open_set_config is None:
             raise RuntimeError("this model bundle has no open-set calibration")
@@ -190,7 +274,7 @@ class RelationPredictor:
         probabilities = self._probabilities(logits[0], calibrated=True)
         predictions = self._decode_row(probabilities, top_k=top_k)
 
-        threshold = float(self.open_set_config["abstention_threshold"])
+        threshold = resolve_open_set_threshold(self.open_set_config, profile)
         temperature = float(self.open_set_config["temperature"])
         accepted = float(probabilities.max().item()) >= threshold
 
@@ -203,6 +287,7 @@ class RelationPredictor:
             model_id=self.model_id,
             decision="KNOWN_RELATION" if accepted else "UNKNOWN_RELATION",
             accepted=accepted,
+            profile=profile,
             threshold=threshold,
             temperature=temperature,
         )
