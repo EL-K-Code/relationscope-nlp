@@ -149,3 +149,12 @@ class ModelRegistryEntry(BaseModel):
 class ModelRegistryResponse(BaseModel):
     current_model_id: str
     entries: list[ModelRegistryEntry]
+
+
+class RelationCatalogItem(BaseModel):
+    relation_id: str
+    relation_name: str
+
+
+class RelationCatalogResponse(BaseModel):
+    items: list[RelationCatalogItem]
