@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from relationscope.data.schema import (
     PredictionItem,
     PredictResponse,
 )
+from relationscope.data.v2_schema import InfluenceExplainResponse, WordInfluence
 from relationscope.models.entity_classifier import (
     EntityAwareRelationClassifier,
     marker_positions,
@@ -76,7 +78,6 @@ def available_open_set_profiles(
             if isinstance(entry, dict) and "threshold" in entry:
                 available.append(profile)
 
-    # Backwards compatibility with bundles produced before named profiles existed.
     if not available and "abstention_threshold" in config:
         available.append("balanced")
 
@@ -117,7 +118,6 @@ def resolve_open_set_threshold(
         if isinstance(entry, dict):
             raw_threshold = entry.get("threshold")
 
-    # A legacy bundle only exposes the calibrated balanced threshold.
     if raw_threshold is None and profile == "balanced":
         raw_threshold = config.get("abstention_threshold")
 
@@ -228,6 +228,12 @@ class RelationPredictor:
             logits = logits / temperature
         return torch.softmax(logits, dim=-1)
 
+    def _relation_index(self, relation_id: str) -> int:
+        for raw_index, metadata in self.label_map.items():
+            if metadata["relation_id"] == relation_id:
+                return int(raw_index)
+        raise ValueError(f"unknown relation_id: {relation_id}")
+
     @torch.inference_mode()
     def predict(
         self,
@@ -308,6 +314,66 @@ class RelationPredictor:
         )
 
     @torch.inference_mode()
+    def predict_open_set_batch(
+        self,
+        *,
+        examples: list[BatchPredictExample],
+        top_k: int,
+        profile: OpenSetProfile = "balanced",
+    ) -> list[OpenSetPredictResponse]:
+        """Vectorized calibrated open-set inference for one bounded chunk."""
+        if self.open_set_config is None:
+            raise RuntimeError("this model bundle has no open-set calibration")
+        if not examples:
+            return []
+
+        started = time.perf_counter()
+        model_texts = [
+            self._input_text(example.text, example.head, example.tail)
+            for example in examples
+        ]
+        encoded = self.tokenizer(
+            model_texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+        )
+        encoded = {key: value.to(self.device) for key, value in encoded.items()}
+        logits = self.model(**self._model_inputs(encoded))
+        probabilities = self._probabilities(logits, calibrated=True)
+
+        threshold = resolve_open_set_threshold(self.open_set_config, profile)
+        temperature = float(self.open_set_config["temperature"])
+        per_item_latency = ((time.perf_counter() - started) * 1000) / len(examples)
+
+        responses: list[OpenSetPredictResponse] = []
+        for example, model_text, row in zip(
+            examples,
+            model_texts,
+            probabilities,
+            strict=True,
+        ):
+            predictions = self._decode_row(row, top_k=top_k)
+            accepted = float(row.max().item()) >= threshold
+            responses.append(
+                OpenSetPredictResponse(
+                    head=example.head.text,
+                    tail=example.tail.text,
+                    marked_text=model_text,
+                    predictions=predictions,
+                    latency_ms=per_item_latency,
+                    model_id=self.model_id,
+                    decision="KNOWN_RELATION" if accepted else "UNKNOWN_RELATION",
+                    accepted=accepted,
+                    profile=profile,
+                    threshold=threshold,
+                    temperature=temperature,
+                )
+            )
+        return responses
+
+    @torch.inference_mode()
     def explain(
         self,
         *,
@@ -316,6 +382,7 @@ class RelationPredictor:
         tail: EntitySpan,
         top_evidence: int,
     ) -> ExplainResponse:
+        """Legacy v1 sub-token occlusion explanation."""
         start_time = time.perf_counter()
         model_text = self._input_text(text, head, tail)
         encoded = self.tokenizer(
@@ -396,6 +463,147 @@ class RelationPredictor:
             evidence=evidence[:top_evidence],
             method="token_occlusion",
             latency_ms=(time.perf_counter() - start_time) * 1000,
+        )
+
+    @torch.inference_mode()
+    def explain_words(
+        self,
+        *,
+        text: str,
+        head: EntitySpan,
+        tail: EntitySpan,
+        profile: OpenSetProfile = "balanced",
+        target_relation_id: str | None = None,
+    ) -> InfluenceExplainResponse:
+        """Return a signed, relation-specific word influence map.
+
+        Each displayed word is masked as a complete group of tokenizer pieces. The
+        score is the drop in calibrated target-relation confidence caused by that
+        intervention. Positive values support the relation; negative values oppose it.
+        """
+        if self.open_set_config is None:
+            raise RuntimeError("this model bundle has no open-set calibration")
+        if not getattr(self.tokenizer, "is_fast", False):
+            raise RuntimeError("word influence requires a fast tokenizer")
+
+        started = time.perf_counter()
+        model_text = self._input_text(text, head, tail)
+        raw_encoded = self.tokenizer(
+            model_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.max_length,
+            return_offsets_mapping=True,
+        )
+        offsets = raw_encoded.pop("offset_mapping")[0].tolist()
+        encoded = {key: value.to(self.device) for key, value in raw_encoded.items()}
+
+        baseline_logits = self.model(**self._model_inputs(encoded))
+        baseline_probabilities = self._probabilities(
+            baseline_logits[0],
+            calibrated=True,
+        )
+        predicted_index = int(torch.argmax(baseline_probabilities).item())
+        target_index = (
+            self._relation_index(target_relation_id)
+            if target_relation_id is not None
+            else predicted_index
+        )
+        baseline_confidence = float(baseline_probabilities[target_index].item())
+
+        threshold = resolve_open_set_threshold(self.open_set_config, profile)
+        accepted = float(baseline_probabilities.max().item()) >= threshold
+
+        marker_ids = {
+            self.tokenizer.convert_tokens_to_ids(marker)
+            for marker in ENTITY_MARKERS
+        }
+        excluded = set(self.tokenizer.all_special_ids).union(marker_ids)
+        token_ids = encoded["input_ids"][0]
+
+        replacement_id = self.tokenizer.mask_token_id
+        if replacement_id is None:
+            replacement_id = self.tokenizer.unk_token_id
+        if replacement_id is None:
+            raise RuntimeError("tokenizer has neither mask_token nor unk_token")
+
+        groups: list[tuple[str, int, int, list[int]]] = []
+        for match in re.finditer(r"\S+", model_text):
+            word = match.group(0)
+            if word in ENTITY_MARKERS:
+                continue
+
+            positions: list[int] = []
+            for position, ((start, end), token_id) in enumerate(
+                zip(offsets, token_ids.tolist(), strict=True)
+            ):
+                if token_id in excluded or start == end == 0:
+                    continue
+                if start < match.end() and end > match.start():
+                    positions.append(position)
+
+            if positions:
+                groups.append((word, match.start(), match.end(), positions))
+
+        drops: list[float] = []
+        if groups:
+            occluded_ids = token_ids.repeat(len(groups), 1)
+            for row, (_, _, _, positions) in enumerate(groups):
+                for position in positions:
+                    occluded_ids[row, position] = replacement_id
+
+            occluded = {
+                "input_ids": occluded_ids,
+                "attention_mask": encoded["attention_mask"].repeat(len(groups), 1),
+            }
+            occluded_logits = self.model(**self._model_inputs(occluded))
+            occluded_probabilities = self._probabilities(
+                occluded_logits,
+                calibrated=True,
+            )
+            drops = [
+                baseline_confidence
+                - float(occluded_probabilities[row, target_index].item())
+                for row in range(len(groups))
+            ]
+
+        max_abs = max((abs(value) for value in drops), default=0.0)
+        influences: list[WordInfluence] = []
+        for (word, start, end, _), drop in zip(groups, drops, strict=True):
+            normalized = drop / max_abs if max_abs > 0 else 0.0
+            direction = (
+                "supports"
+                if drop > 1e-6
+                else "opposes"
+                if drop < -1e-6
+                else "neutral"
+            )
+            influences.append(
+                WordInfluence(
+                    word=word,
+                    start=start,
+                    end=end,
+                    confidence_drop=drop,
+                    normalized_influence=max(-1.0, min(1.0, normalized)),
+                    direction=direction,
+                )
+            )
+
+        metadata = self.label_map[str(target_index)]
+        return InfluenceExplainResponse(
+            model_id=self.model_id,
+            relation=Prediction(
+                relation_id=metadata["relation_id"],
+                relation_name=metadata["relation_name"],
+                confidence=baseline_confidence,
+            ),
+            decision="KNOWN_RELATION" if accepted else "UNKNOWN_RELATION",
+            profile=profile,
+            threshold=threshold,
+            baseline_confidence=baseline_confidence,
+            marked_text=model_text,
+            influences=influences,
+            latency_ms=(time.perf_counter() - started) * 1000,
         )
 
     @torch.inference_mode()
