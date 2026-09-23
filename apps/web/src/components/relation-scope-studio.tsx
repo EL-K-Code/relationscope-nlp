@@ -237,6 +237,29 @@ export function RelationScopeStudio() {
           </div>
         </header>
 
+        <div className="performanceStrip">
+          <div>
+            <small>KNOWN MACRO-F1</small>
+            <strong>{confidence(FINAL_METRICS.knownMacroF1)}</strong>
+            <span>56 known relations</span>
+          </div>
+          <div>
+            <small>OOD AUROC</small>
+            <strong>{confidence(FINAL_METRICS.oodAuRoc)}</strong>
+            <span>16 unseen relations</span>
+          </div>
+          <div>
+            <small>UNKNOWN F1</small>
+            <strong>{confidence(FINAL_METRICS.unknownF1)}</strong>
+            <span>balanced profile</span>
+          </div>
+          <div>
+            <small>WARM CPU P50</small>
+            <strong>{FINAL_METRICS.warmCpuMedianMs.toFixed(1)} ms</strong>
+            <span>Cloud Run · 2 vCPU</span>
+          </div>
+        </div>
+
         {error && <div className="errorBanner">{error}</div>}
 
         {tab === "extract" && (
