@@ -1,6 +1,6 @@
 project_id        = "YOUR_GCP_PROJECT_ID"
 region            = "europe-west1"
-model_bucket_name = "YOUR_GLOBALLY_UNIQUE_RELATIONSCOPE_MODEL_BUCKET"
+model_bucket_name = "YOUR_GLOBALLY_UNIQUE_RELATIONSCOPE_MODEL_BUCKET"\nops_bucket_name   = "YOUR_GLOBALLY_UNIQUE_RELATIONSCOPE_OPS_BUCKET"
 cloud_build_submitter_member = "user:you@example.com"
 
 api_image = "europe-west1-docker.pkg.dev/YOUR_GCP_PROJECT_ID/relationscope/api:latest"
