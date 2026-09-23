@@ -28,6 +28,7 @@ from relationscope.models.entity_classifier import (
     marker_positions,
 )
 
+
 def resolve_model_id(bundle_dir: Path) -> str:
     """Return the promoted model version from manifest.json when available."""
     manifest_path = bundle_dir / "manifest.json"
