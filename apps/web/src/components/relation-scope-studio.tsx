@@ -20,13 +20,20 @@ import {
   predictRelation,
 } from "@/lib/api";
 import { KnowledgeGraph } from "@/components/knowledge-graph";
+import { RiskCoverageChart } from "@/components/risk-coverage-chart";
 import { exportBatchResults, parseBatchCsv } from "@/lib/csv";
+import {
+  EVALUATION_PROTOCOL,
+  FINAL_METRICS,
+  PROFILE_METRICS,
+} from "@/lib/model-report";
 import type {
   BatchInput,
   BatchResult,
   ExplainResponse,
   ModelInfo,
   OpenSetPredictResponse,
+  OpenSetProfile,
   PredictResponse,
 } from "@/lib/types";
 
@@ -68,6 +75,7 @@ export function RelationScopeStudio() {
   const [tailText, setTailText] = useState("Warsaw");
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
   const [openSet, setOpenSet] = useState<OpenSetPredictResponse | null>(null);
+  const [profile, setProfile] = useState<OpenSetProfile>("balanced");
   const [explanation, setExplanation] = useState<ExplainResponse | null>(null);
   const [model, setModel] = useState<ModelInfo | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
@@ -78,7 +86,12 @@ export function RelationScopeStudio() {
 
   useEffect(() => {
     getModelInfo()
-      .then(setModel)
+      .then((info) => {
+        setModel(info);
+        if (info.default_open_set_profile) {
+          setProfile(info.default_open_set_profile);
+        }
+      })
       .catch((reason: unknown) =>
         setModelError(reason instanceof Error ? reason.message : "Model offline"),
       );
