@@ -151,7 +151,7 @@ Ablation effects on test Macro-F1:
 
 Interpretation: the gain is not explained by the pretrained backbone alone. Explicit entity markers provide the largest improvement, and entity-aware pooling adds a further measurable gain.
 
-## 5. Open-set protocol prepared
+## 5. Final open-set benchmark
 
 Protocol:
 
@@ -173,33 +173,148 @@ Split sizes:
 
 Leakage guardrail:
 
-> Official FewRel validation relations are used only as final unseen-relation test data.
+> Official FewRel validation relations are used only as final unseen-relation test data. Operating thresholds are frozen from validation-known + calibration-unknown data before the final unseen test.
 
-Open-set training has **not yet been completed**.
+### Training history
 
-## 6. Promotion status
+| Epoch | Train loss | Validation accuracy | Validation Macro-F1 | Top-3 | ECE |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 2.0224480918 | 0.8311224490 | 0.8281654720 | 0.9604591837 | 0.0230505190 |
+| 2 | 0.4106610154 | 0.8905612245 | 0.8896936652 | 0.9772959184 | 0.0113807839 |
+| 3 | 0.2122534933 | 0.9012755102 | 0.9008318570 | 0.9808673469 | 0.0213488214 |
 
-### Current best closed-set candidate
+Temperature scaling:
 
-**ModernBERT-base + marked entities + entity-pair pooling**
+- Temperature: **1.0868413448**
 
-Current test metrics:
+### Known-relation final test
 
-- Macro-F1: **84.89%**
-- Accuracy: **85.02%**
-- Top-3 accuracy: **95.96%**
-- ECE-15: **2.70%**
+- Accuracy: **0.8920918367**
+- Macro-F1: **0.8915730906**
+- Micro-F1: **0.8920918367**
+- Top-3 accuracy: **0.9801020408**
+- ECE: **0.0194929293**
 
-### Not yet production-promoted
+### Calibration open-set split
 
-Final production promotion must wait for:
+Balanced operating point, threshold **0.967**:
 
-1. Open-set training and unseen-relation evaluation.
-2. Temperature scaling / abstention threshold validation.
-3. Error analysis.
-4. Latency benchmark.
-5. Final model bundle publication.
-6. API/UI integration smoke test.
-7. GCP deployment validation.
+- AUROC: **0.8370367392**
+- AUPRC: **0.8680865653**
+- FPR95: **0.5905612245**
+- Unknown-F1: **0.8181209178**
+- Known acceptance: **0.6283163265**
+- Unknown rejection: **0.8723214286**
 
-The final promoted model may therefore differ from the current best closed-set checkpoint.
+### Final unseen-relation test
+
+The threshold remains frozen at **0.967**.
+
+- AUROC: **0.8032652036**
+- AUPRC: **0.9049622513**
+- FPR95: **0.5785714286**
+- Unknown-F1: **0.8529557650**
+- Known acceptance: **0.6125000000**
+- Unknown rejection: **0.8444642857**
+
+AUPRC differs with class prevalence and is not interpreted as a direct calibration-vs-final improvement. AUROC is the more prevalence-stable comparison.
+
+## 6. Frozen operating profiles
+
+Thresholds were selected only on validation-known + calibration-unknown data.
+
+### Calibration selection
+
+| Profile | Threshold | Known acceptance | Accepted-known accuracy | Unknown rejection | Unknown-F1 |
+|---|---:|---:|---:|---:|---:|
+| High coverage | 0.924 | 0.7357 | 0.9795 | 0.8014 | 0.8069 |
+| Balanced | 0.967 | 0.6283 | 0.9898 | 0.8723 | 0.8181 |
+| High safety | 0.978 | 0.5620 | 0.9923 | 0.9027 | 0.8172 |
+
+### Frozen final test
+
+| Profile | Threshold | Known acceptance | Accepted-known accuracy | Unknown rejection | Unknown-F1 |
+|---|---:|---:|---:|---:|---:|
+| High coverage | 0.924 | 0.7240 | 0.9767 | 0.7379 | 0.8044 |
+| **Balanced** | **0.967** | **0.6125** | **0.9867** | **0.8445** | **0.8530** |
+| High safety | 0.978 | 0.5543 | 0.9894 | 0.8863 | 0.8680 |
+
+`balanced` is the production default.
+
+## 7. Risk-coverage on known test data
+
+| Coverage | Risk | Accuracy |
+|---:|---:|---:|
+| 1.00 | 0.108 | 0.892 |
+| 0.90 | 0.062 | 0.938 |
+| 0.80 | 0.034 | 0.966 |
+| 0.70 | 0.019 | 0.981 |
+| 0.60 | 0.013 | 0.987 |
+| 0.50 | 0.009 | 0.991 |
+
+This measures selective classification among known examples only.
+
+## 8. Latency
+
+### GPU sequential open-set inference
+
+500 examples:
+
+- Mean: **22.04 ms**
+- Median: **21.81 ms**
+- P95: **23.32 ms**
+- P99: **28.49 ms**
+- Min: **20.28 ms**
+- Max: **33.87 ms**
+- Throughput: **45.37 examples/s**
+
+### GPU batch benchmark
+
+| Batch | Mean batch latency | P95 | Mean per example | Throughput |
+|---:|---:|---:|---:|---:|
+| 1 | 22.56 ms | 24.42 ms | 22.56 ms | 44.33 ex/s |
+| 8 | 41.83 ms | 53.01 ms | 5.23 ms | 191.24 ex/s |
+| 16 | 84.45 ms | 107.15 ms | 5.28 ms | 189.46 ex/s |
+| 32 | 172.24 ms | 209.87 ms | 5.38 ms | 185.79 ex/s |
+| 64 | 374.84 ms | 444.47 ms | 5.86 ms | 170.74 ex/s |
+| 128 | 721.39 ms | 791.46 ms | 5.64 ms | 177.43 ex/s |
+
+### Google Cloud Run CPU — warm
+
+Configuration: 2 vCPU, 4 GiB.
+
+10 sequential requests after model warm-up:
+
+- Application inference mean: **94.2 ms**
+- Application inference median: **87.2 ms**
+- Client end-to-end mean: **157.3 ms**
+- Client end-to-end median: **138.0 ms**
+
+These CPU results are intentionally reported separately from the GPU benchmark. They do not include a scale-to-zero cold start.
+
+## 9. Promotion status
+
+### Production promoted
+
+**ModernBERT-base + marked entities + entity-pair pooling + temperature scaling + open-set profiles**
+
+Promoted bundle:
+
+`modernbert-open-set-v1.1`
+
+Production default:
+
+`balanced` at threshold **0.967**
+
+Validated production chain:
+
+1. model training and frozen evaluation;
+2. temperature scaling and operating-point calibration;
+3. GCS model publication with SHA-256 manifest;
+4. CPU-only container image;
+5. private FastAPI service on Cloud Run;
+6. public Next.js service with server-side authenticated proxy;
+7. live production inference;
+8. warm Cloud Run CPU latency benchmark.
+
+RelationScope is therefore ready for the **v1.0.0** release freeze.
