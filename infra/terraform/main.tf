@@ -1,4 +1,9 @@
 locals {
+  cloud_build_submitter_roles = toset([
+    "roles/cloudbuild.builds.editor",
+    "roles/serviceusage.serviceUsageConsumer",
+  ])
+
   required_services = toset([
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
@@ -14,6 +19,14 @@ resource "google_project_service" "required" {
   project            = var.project_id
   service            = each.value
   disable_on_destroy = false
+}
+
+resource "google_project_iam_member" "cloud_build_submitter" {
+  for_each = var.cloud_build_submitter_member == null ? toset([]) : local.cloud_build_submitter_roles
+
+  project = var.project_id
+  role    = each.value
+  member  = var.cloud_build_submitter_member
 }
 
 resource "google_artifact_registry_repository" "containers" {
