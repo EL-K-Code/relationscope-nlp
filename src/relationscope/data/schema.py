@@ -6,7 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 OpenSetProfile = Literal["high_coverage", "balanced", "high_safety"]
 
 
