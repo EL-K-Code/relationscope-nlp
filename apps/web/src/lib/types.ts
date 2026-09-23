@@ -4,6 +4,8 @@ export type EntitySpan = {
   end: number;
 };
 
+export type OpenSetProfile = "high_coverage" | "balanced" | "high_safety";
+
 export type Prediction = {
   relation_id: string;
   relation_name: string;
@@ -22,6 +24,7 @@ export type PredictResponse = {
 export type OpenSetPredictResponse = PredictResponse & {
   decision: "KNOWN_RELATION" | "UNKNOWN_RELATION";
   accepted: boolean;
+  profile: OpenSetProfile;
   threshold: number;
   temperature: number;
 };
@@ -49,6 +52,8 @@ export type ModelInfo = {
   pooling_mode: string;
   input_view: string;
   open_set_enabled: boolean;
+  default_open_set_profile: OpenSetProfile | null;
+  open_set_profiles: OpenSetProfile[];
 };
 
 export type BatchInput = {

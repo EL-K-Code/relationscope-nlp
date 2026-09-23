@@ -3,6 +3,7 @@ import type {
   ExplainResponse,
   ModelInfo,
   OpenSetPredictResponse,
+  OpenSetProfile,
   PredictResponse,
 } from "@/lib/types";
 
@@ -47,10 +48,11 @@ export async function predictOpenSet(
   head: BatchInput["head"],
   tail: BatchInput["tail"],
   topK = 5,
+  profile: OpenSetProfile = "balanced",
 ): Promise<OpenSetPredictResponse> {
   return request<OpenSetPredictResponse>("/v1/relations:predict-open-set", {
     method: "POST",
-    body: JSON.stringify({ text, head, tail, top_k: topK }),
+    body: JSON.stringify({ text, head, tail, top_k: topK, profile }),
   });
 }
 
