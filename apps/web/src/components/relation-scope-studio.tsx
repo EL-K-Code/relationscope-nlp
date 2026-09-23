@@ -276,6 +276,35 @@ export function RelationScopeStudio() {
                 </label>
               </div>
 
+              <div className="profileBlock">
+                <div className="profileBlockHeader">
+                  <div>
+                    <small>OPERATING PROFILE</small>
+                    <strong>{PROFILE_METRICS[profile].label}</strong>
+                  </div>
+                  <span>
+                    threshold {confidence(PROFILE_METRICS[profile].threshold)}
+                  </span>
+                </div>
+                <div className="profileSelector">
+                  {(model?.open_set_profiles?.length
+                    ? model.open_set_profiles
+                    : PROFILE_ORDER
+                  ).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={item === profile ? "profileActive" : ""}
+                      onClick={() => setProfile(item)}
+                    >
+                      <strong>{PROFILE_METRICS[item].shortLabel}</strong>
+                      <span>{confidence(PROFILE_METRICS[item].threshold)}</span>
+                    </button>
+                  ))}
+                </div>
+                <p>{PROFILE_METRICS[profile].description}</p>
+              </div>
+
               <button className="primaryButton" onClick={runExtraction} disabled={busy}>
                 <Sparkles size={17} />
                 {busy ? "Analysing…" : "Extract relation"}
