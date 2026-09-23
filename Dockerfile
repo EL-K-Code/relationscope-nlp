@@ -11,11 +11,13 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.18 /uv /uvx /bin/
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN uv pip install \
+RUN test -f src/relationscope/models/entity_classifier.py \
+    && uv pip install \
       --system \
       --no-cache \
       --torch-backend=cpu \
       . \
+    && python -c "from relationscope.models.entity_classifier import EntityAwareRelationClassifier" \
     && useradd --create-home --uid 10001 relationscope \
     && mkdir -p /tmp/relationscope \
     && chown -R relationscope:relationscope /tmp/relationscope /app

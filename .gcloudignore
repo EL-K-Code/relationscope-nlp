@@ -1,0 +1,46 @@
+# Explicit Cloud Build source context.
+# Keep deployment filtering independent from .gitignore so tracked Python
+# packages such as src/relationscope/models are never dropped accidentally.
+
+.gcloudignore
+.git
+.gitignore
+.github/
+
+# Local Python / editor state
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local environment and generated credentials
+.env
+.env.*
+!.env.example
+gha-creds-*.json
+
+# Non-API build inputs
+/data/
+/notebooks/
+/tests/
+/docs/
+/apps/
+/infra/
+/reports/
+
+# Large local artifacts; these are served from GCS at runtime.
+/artifacts/
+/models/
+/checkpoints/
+
+# Terraform/local generated files
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
