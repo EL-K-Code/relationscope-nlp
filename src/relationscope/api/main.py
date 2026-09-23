@@ -31,6 +31,7 @@ from relationscope.data.v2_schema import (
     InfluenceExplainResponse,
     MetricsSummaryResponse,
     ModelRegistryResponse,
+    RelationCatalogResponse,
 )
 from relationscope.inference.model_store import resolve_model_bundle
 from relationscope.inference.predictor import RelationPredictor
@@ -239,6 +240,14 @@ def metrics_summary(
 ) -> MetricsSummaryResponse:
     try:
         return get_telemetry_service().summary(limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/v2/relations", response_model=RelationCatalogResponse)
+def relation_catalog() -> RelationCatalogResponse:
+    try:
+        return get_predictor().relation_catalog()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
