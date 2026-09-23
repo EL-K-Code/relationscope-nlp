@@ -113,7 +113,7 @@ class EntityAwareRelationClassifier(nn.Module):
         *,
         device: torch.device,
     ) -> tuple[
-        "EntityAwareRelationClassifier",
+        EntityAwareRelationClassifier,
         PreTrainedTokenizerBase,
         dict[str, dict[str, str]],
     ]:
