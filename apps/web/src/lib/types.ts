@@ -148,3 +148,13 @@ export type ModelRegistry = {
   current_model_id: string;
   entries: ModelRegistryEntry[];
 };
+
+
+export type RelationCatalogItem = {
+  relation_id: string;
+  relation_name: string;
+};
+
+export type RelationCatalog = {
+  items: RelationCatalogItem[];
+};
