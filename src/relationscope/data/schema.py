@@ -7,6 +7,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+OpenSetProfile = Literal["high_coverage", "balanced", "high_safety"]
+
+
 class EntitySpan(BaseModel):
     """Character span in a source text. End is exclusive."""
 
@@ -56,6 +59,10 @@ class PredictRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
 
 
+class OpenSetPredictRequest(PredictRequest):
+    profile: OpenSetProfile = "balanced"
+
+
 class PredictResponse(PredictionItem):
     latency_ms: float
     model_id: str
@@ -64,6 +71,7 @@ class PredictResponse(PredictionItem):
 class OpenSetPredictResponse(PredictResponse):
     decision: Literal["KNOWN_RELATION", "UNKNOWN_RELATION"]
     accepted: bool
+    profile: OpenSetProfile
     threshold: float = Field(ge=0.0, le=1.0)
     temperature: float = Field(gt=0.0)
 
@@ -116,3 +124,5 @@ class ModelInfoResponse(BaseModel):
     pooling_mode: str
     input_view: str
     open_set_enabled: bool
+    default_open_set_profile: OpenSetProfile | None = None
+    open_set_profiles: list[OpenSetProfile] = Field(default_factory=list)
