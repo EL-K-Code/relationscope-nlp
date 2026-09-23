@@ -36,7 +36,7 @@ def _result_key(job_id: str) -> str:
 
 
 class BatchDispatcher(Protocol):
-    def enqueue(self, job_id: str) -> None: ...
+    def enqueue(self, job_id: str, *, api_base_url: str) -> None: ...
 
 
 class CloudTasksDispatcher:
@@ -48,7 +48,6 @@ class CloudTasksDispatcher:
         project_id: str,
         location: str,
         queue: str,
-        target_base_url: str,
         service_account_email: str,
     ) -> None:
         from google.cloud import tasks_v2
@@ -56,11 +55,11 @@ class CloudTasksDispatcher:
         self.tasks_v2 = tasks_v2
         self.client = tasks_v2.CloudTasksClient()
         self.parent = self.client.queue_path(project_id, location, queue)
-        self.target_base_url = target_base_url.rstrip("/")
         self.service_account_email = service_account_email
 
-    def enqueue(self, job_id: str) -> None:
-        target_url = f"{self.target_base_url}/{job_id}:run"
+    def enqueue(self, job_id: str, *, api_base_url: str) -> None:
+        audience = api_base_url.rstrip("/")
+        target_url = f"{audience}/v2/internal/batch-jobs/{job_id}:run"
         task = {
             "http_request": {
                 "http_method": self.tasks_v2.HttpMethod.POST,
@@ -68,7 +67,7 @@ class CloudTasksDispatcher:
                 "headers": {"Content-Type": "application/json"},
                 "oidc_token": {
                     "service_account_email": self.service_account_email,
-                    "audience": os.environ["RELATIONSCOPE_API_AUDIENCE"],
+                    "audience": audience,
                 },
             },
             "dispatch_deadline": {"seconds": 900},
@@ -81,7 +80,6 @@ def dispatcher_from_env() -> BatchDispatcher | None:
         "project_id": os.getenv("GOOGLE_CLOUD_PROJECT"),
         "location": os.getenv("RELATIONSCOPE_TASK_LOCATION"),
         "queue": os.getenv("RELATIONSCOPE_TASK_QUEUE"),
-        "target_base_url": os.getenv("RELATIONSCOPE_TASK_TARGET_URL"),
         "service_account_email": os.getenv("RELATIONSCOPE_TASK_SERVICE_ACCOUNT"),
     }
     if not all(required.values()):
@@ -103,7 +101,12 @@ class BatchJobService:
         self.dispatcher = dispatcher
         self.chunk_size = chunk_size
 
-    def create(self, request: BatchJobCreateRequest) -> BatchJobSummary:
+    def create(
+        self,
+        request: BatchJobCreateRequest,
+        *,
+        api_base_url: str | None = None,
+    ) -> BatchJobSummary:
         job_id = str(uuid.uuid4())
         now = _utc_now()
         status = BatchJobSummary(
@@ -118,8 +121,10 @@ class BatchJobService:
         self.store.put_json(_job_key(job_id), status.model_dump(mode="json"))
 
         if self.dispatcher is not None:
+            if not api_base_url:
+                raise RuntimeError("api_base_url is required for Cloud Tasks dispatch")
             try:
-                self.dispatcher.enqueue(job_id)
+                self.dispatcher.enqueue(job_id, api_base_url=api_base_url)
             except Exception:
                 failed = status.model_copy(
                     update={
