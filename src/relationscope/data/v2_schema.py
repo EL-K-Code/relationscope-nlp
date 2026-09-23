@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from relationscope.data.schema import (
     BatchPredictExample,
@@ -71,6 +71,12 @@ class FeedbackRequest(BaseModel):
     corrected_relation_name: str | None = None
     note: str | None = Field(default=None, max_length=1000)
     consent_to_store_text: bool = False
+
+    @model_validator(mode="after")
+    def validate_correction(self) -> FeedbackRequest:
+        if self.verdict == "correct" and not self.corrected_relation_name:
+            raise ValueError("corrected_relation_name is required for corrected feedback")
+        return self
 
 
 class FeedbackResponse(BaseModel):
