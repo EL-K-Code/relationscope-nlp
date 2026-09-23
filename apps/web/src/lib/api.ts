@@ -8,6 +8,7 @@ import type {
   ModelInfo,
   ModelRegistry,
   OpenSetPredictResponse,
+  RelationCatalog,
   OpenSetProfile,
   PredictResponse,
 } from "@/lib/types";
@@ -130,4 +131,9 @@ export async function getMetricsSummary(limit = 500): Promise<MetricsSummary> {
 
 export async function getModelRegistry(): Promise<ModelRegistry> {
   return request<ModelRegistry>("/v2/models");
+}
+
+
+export async function getRelationCatalog(): Promise<RelationCatalog> {
+  return request<RelationCatalog>("/v2/relations");
 }
