@@ -39,7 +39,7 @@ export async function predictRelation(
 ): Promise<PredictResponse> {
   return request<PredictResponse>("/v1/relations:predict", {
     method: "POST",
-    body: JSON.stringify({ text, head, tail, top_k: topK, profile }),
+    body: JSON.stringify({ text, head, tail, top_k: topK }),
   });
 }
 
@@ -52,7 +52,7 @@ export async function predictOpenSet(
 ): Promise<OpenSetPredictResponse> {
   return request<OpenSetPredictResponse>("/v1/relations:predict-open-set", {
     method: "POST",
-    body: JSON.stringify({ text, head, tail, top_k: topK }),
+    body: JSON.stringify({ text, head, tail, top_k: topK, profile }),
   });
 }
 
