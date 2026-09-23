@@ -10,7 +10,6 @@ from relationscope.inference.predictor import (
     resolve_open_set_threshold,
 )
 
-
 PROFILE_CONFIG: dict[str, object] = {
     "temperature": 1.086841344833374,
     "abstention_threshold": 0.967,
