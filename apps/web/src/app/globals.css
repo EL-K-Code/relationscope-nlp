@@ -818,3 +818,466 @@ tbody tr:last-child td {
   font-size: 7px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+
+.performanceStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: -8px 0 24px;
+}
+
+.performanceStrip > div {
+  min-width: 0;
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(15, 19, 27, 0.8);
+}
+
+.performanceStrip small,
+.performanceStrip strong,
+.performanceStrip span {
+  display: block;
+}
+
+.performanceStrip small {
+  color: #69758a;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.performanceStrip strong {
+  margin-top: 7px;
+  color: var(--text);
+  font-size: 20px;
+  letter-spacing: -0.035em;
+}
+
+.performanceStrip span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.profileBlock {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid #293143;
+  border-radius: 12px;
+  background: #0c1016;
+}
+
+.profileBlockHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.profileBlockHeader small,
+.profileBlockHeader strong {
+  display: block;
+}
+
+.profileBlockHeader small {
+  color: #6f798e;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.profileBlockHeader strong {
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.profileBlockHeader > span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.profileSelector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.profileSelector button {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 1px solid #283041;
+  border-radius: 9px;
+  color: var(--muted);
+  background: #111620;
+  text-align: left;
+}
+
+.profileSelector button:hover {
+  border-color: #3c485f;
+}
+
+.profileSelector .profileActive {
+  border-color: rgba(157, 246, 206, 0.5);
+  color: var(--text);
+  background: rgba(157, 246, 206, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(157, 246, 206, 0.05);
+}
+
+.profileSelector strong {
+  font-size: 10px;
+}
+
+.profileSelector span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.profileBlock > p {
+  margin: 10px 0 0;
+  color: #717c91;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.decisionTelemetry {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.decisionTelemetry > div {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0c1016;
+}
+
+.decisionTelemetry small,
+.decisionTelemetry strong {
+  display: block;
+}
+
+.decisionTelemetry small {
+  color: #687286;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.decisionTelemetry strong {
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.labSummaryCard {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  gap: 26px;
+  padding: 26px;
+  background:
+    radial-gradient(circle at 80% 0%, rgba(157, 246, 206, 0.08), transparent 32rem),
+    linear-gradient(180deg, rgba(20, 24, 34, 0.96), rgba(14, 17, 24, 0.96));
+}
+
+.labSummaryCard h2 {
+  max-width: 640px;
+  margin: 16px 0 10px;
+  font-size: clamp(24px, 3.2vw, 40px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.labSummaryCard p {
+  max-width: 650px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.labSummaryMetrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.labSummaryMetrics > div {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(8, 11, 16, 0.72);
+}
+
+.labSummaryMetrics small,
+.labSummaryMetrics strong {
+  display: block;
+}
+
+.labSummaryMetrics small {
+  color: #6f798e;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.labSummaryMetrics strong {
+  margin-top: 7px;
+  font-size: 18px;
+  letter-spacing: -0.025em;
+}
+
+.chartPanel,
+.profileLabCard,
+.protocolCard {
+  padding: 22px;
+}
+
+.riskChart {
+  width: 100%;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.chartHeader small,
+.chartHeader strong {
+  display: block;
+}
+
+.chartHeader small {
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.chartHeader strong {
+  margin-top: 5px;
+  font-size: 15px;
+}
+
+.chartHeader > span {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.riskChart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chartGrid {
+  stroke: #232a38;
+  stroke-width: 1;
+}
+
+.chartAxisLabel,
+.chartAxisTitle {
+  fill: #667187;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.chartAxisTitle {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.riskLine {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.riskPoint {
+  fill: #10151d;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.profileMatrix {
+  display: grid;
+  gap: 8px;
+}
+
+.profileMatrix article {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0c1016;
+}
+
+.profileMatrixHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.profileMatrixHead strong {
+  font-size: 11px;
+}
+
+.profileMatrixHead span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.profileMatrix dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 14px;
+  margin: 12px 0 0;
+}
+
+.profileMatrix dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #202634;
+}
+
+.profileMatrix dt,
+.profileMatrix dd {
+  margin: 0;
+  font-size: 8px;
+}
+
+.profileMatrix dt {
+  color: var(--muted);
+}
+
+.profileMatrix dd {
+  color: #cfd5df;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.protocolCard {
+  grid-column: 1 / -1;
+}
+
+.protocolName {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid #293143;
+  border-radius: 9px;
+  color: #91a0ba;
+  background: #0a0e14;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.protocolGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.protocolGrid > div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0c1016;
+}
+
+.protocolGrid small,
+.protocolGrid strong {
+  display: block;
+}
+
+.protocolGrid small {
+  min-height: 22px;
+  color: #667187;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+}
+
+.protocolGrid strong {
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.deploymentLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+
+.deploymentLine span {
+  padding: 6px 8px;
+  border-radius: 999px;
+  color: #7f8aa0;
+  background: #0a0e14;
+  font-size: 8px;
+}
+
+@media (max-width: 1100px) {
+  .performanceStrip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .labSummaryCard {
+    grid-template-columns: 1fr;
+  }
+
+  .protocolGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .performanceStrip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .performanceStrip strong {
+    font-size: 16px;
+  }
+
+  .profileSelector {
+    grid-template-columns: 1fr;
+  }
+
+  .decisionTelemetry {
+    grid-template-columns: 1fr;
+  }
+
+  .labSummaryMetrics,
+  .profileMatrix dl,
+  .protocolGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .labSummaryCard,
+  .chartPanel,
+  .profileLabCard,
+  .protocolCard {
+    padding: 16px;
+  }
+}
