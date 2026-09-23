@@ -383,8 +383,35 @@ export function RelationScopeStudio() {
                         </strong>
                       </div>
                       <span>
-                        threshold {confidence(openSet.threshold)}
+                        {PROFILE_METRICS[openSet.profile].label} · threshold{" "}
+                        {confidence(openSet.threshold)}
                       </span>
+                    </div>
+                  )}
+
+                  {openSet && (
+                    <div className="decisionTelemetry">
+                      <div>
+                        <small>CONFIDENCE</small>
+                        <strong>
+                          {confidence(openSet.predictions[0]?.confidence ?? 0)}
+                        </strong>
+                      </div>
+                      <div>
+                        <small>THRESHOLD</small>
+                        <strong>{confidence(openSet.threshold)}</strong>
+                      </div>
+                      <div>
+                        <small>MARGIN</small>
+                        <strong>
+                          {(
+                            ((openSet.predictions[0]?.confidence ?? 0) -
+                              openSet.threshold) *
+                            100
+                          ).toFixed(1)}
+                          pp
+                        </strong>
+                      </div>
                     </div>
                   )}
 
