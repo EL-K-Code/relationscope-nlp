@@ -20,7 +20,15 @@ async function authorizationHeader(): Promise<string | null> {
 
 async function forward(request: NextRequest, context: Context) {
   const { path } = await context.params;
-  const target = new URL(path.join("/"), `${BACKEND_URL.replace(/\/$/, "")}/`);
+  const joinedPath = path.join("/");
+
+  // Internal worker callbacks are IAM-only and must never be exposed through
+  // the public Next.js proxy.
+  if (joinedPath.startsWith("v2/internal/")) {
+    return NextResponse.json({ detail: "Not found" }, { status: 404 });
+  }
+
+  const target = new URL(joinedPath, `${BACKEND_URL.replace(/\/$/, "")}/`);
   target.search = request.nextUrl.search;
 
   const headers = new Headers();

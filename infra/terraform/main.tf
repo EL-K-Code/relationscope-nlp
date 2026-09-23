@@ -7,10 +7,16 @@ locals {
   required_services = toset([
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
+    "cloudtasks.googleapis.com",
     "iamcredentials.googleapis.com",
     "run.googleapis.com",
     "storage.googleapis.com",
   ])
+
+  ops_bucket_name = coalesce(
+    var.ops_bucket_name,
+    "${var.project_id}-relationscope-ops",
+  )
 }
 
 resource "google_project_service" "required" {
@@ -64,6 +70,26 @@ resource "google_storage_bucket" "models" {
   ]
 }
 
+resource "google_storage_bucket" "operations" {
+  name                        = local.ops_bucket_name
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = false
+
+  lifecycle_rule {
+    condition {
+      age = var.ops_retention_days
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  depends_on = [
+    google_project_service.required["storage.googleapis.com"],
+  ]
+}
+
 resource "google_service_account" "api" {
   account_id   = "relationscope-api"
   display_name = "RelationScope API"
@@ -74,10 +100,55 @@ resource "google_service_account" "web" {
   display_name = "RelationScope Web"
 }
 
+resource "google_service_account" "batch_tasks" {
+  account_id   = "relationscope-tasks"
+  display_name = "RelationScope Cloud Tasks caller"
+}
+
 resource "google_storage_bucket_iam_member" "api_reads_models" {
   bucket = google_storage_bucket.models.name
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_storage_bucket_iam_member" "api_manages_operations" {
+  bucket = google_storage_bucket.operations.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_cloud_tasks_queue" "batch" {
+  name     = var.task_queue_name
+  location = var.region
+
+  rate_limits {
+    max_concurrent_dispatches = var.task_max_concurrent_dispatches
+    max_dispatches_per_second = var.task_max_dispatches_per_second
+  }
+
+  retry_config {
+    max_attempts       = 3
+    max_retry_duration = "3600s"
+    min_backoff        = "5s"
+    max_backoff        = "60s"
+    max_doublings      = 3
+  }
+
+  depends_on = [
+    google_project_service.required["cloudtasks.googleapis.com"],
+  ]
+}
+
+resource "google_project_iam_member" "api_enqueues_batch_tasks" {
+  project = var.project_id
+  role    = "roles/cloudtasks.enqueuer"
+  member  = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_service_account_iam_member" "api_acts_as_batch_task_caller" {
+  service_account_id = google_service_account.batch_tasks.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.api.email}"
 }
 
 resource "google_cloud_run_v2_service" "api" {
@@ -88,6 +159,7 @@ resource "google_cloud_run_v2_service" "api" {
 
   template {
     service_account = google_service_account.api.email
+    timeout         = "900s"
 
     scaling {
       min_instance_count = 0
@@ -120,8 +192,38 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
+        name  = "RELATIONSCOPE_MODEL_RELEASES_PREFIX"
+        value = "models/releases"
+      }
+
+      env {
         name  = "RELATIONSCOPE_DEVICE"
         value = "cpu"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_OPS_BUCKET"
+        value = google_storage_bucket.operations.name
+      }
+
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+
+      env {
+        name  = "RELATIONSCOPE_TASK_LOCATION"
+        value = var.region
+      }
+
+      env {
+        name  = "RELATIONSCOPE_TASK_QUEUE"
+        value = google_cloud_tasks_queue.batch.name
+      }
+
+      env {
+        name  = "RELATIONSCOPE_TASK_SERVICE_ACCOUNT"
+        value = google_service_account.batch_tasks.email
       }
 
       startup_probe {
@@ -151,6 +253,9 @@ resource "google_cloud_run_v2_service" "api" {
   depends_on = [
     google_project_service.required["run.googleapis.com"],
     google_storage_bucket_iam_member.api_reads_models,
+    google_storage_bucket_iam_member.api_manages_operations,
+    google_project_iam_member.api_enqueues_batch_tasks,
+    google_service_account_iam_member.api_acts_as_batch_task_caller,
   ]
 }
 
@@ -160,6 +265,14 @@ resource "google_cloud_run_v2_service_iam_member" "web_invokes_api" {
   name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.web.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "batch_tasks_invoke_api" {
+  project  = var.project_id
+  location = google_cloud_run_v2_service.api.location
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.batch_tasks.email}"
 }
 
 resource "google_cloud_run_v2_service" "web" {

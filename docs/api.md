@@ -2,35 +2,54 @@
 
 RelationScope exposes model behavior without requiring the browser to know the model implementation.
 
-## Liveness
+## Health
 
 `GET /health`
 
 Returns successfully without loading the model. Use it for container liveness.
 
-## Readiness
-
 `GET /ready`
 
 Resolves/downloads the configured model bundle and loads it. Returns HTTP 503 while no valid model is available.
 
-## Model metadata
+## V1 compatibility API
 
-`GET /v1/model`
+The V1 routes remain available for clients built against RelationScope v1.0.0:
+
+```text
+GET  /v1/model
+POST /v1/relations:predict
+POST /v1/relations:predict-batch
+POST /v1/relations:predict-open-set
+POST /v1/relations:explain
+```
+
+V1 explanation uses token/subword occlusion and is kept for compatibility.
+
+## V2 model metadata
+
+`GET /v2/model`
 
 Returns:
 
-- model ID;
+- promoted model ID;
 - device;
 - number of known relations;
 - maximum input length;
 - pooling mode;
 - raw vs marked input view;
-- whether open-set calibration is available.
+- whether open-set calibration is available;
+- default and available operating profiles.
 
-## Single relation prediction
+## V2 relation catalog
 
-`POST /v1/relations:predict`
+`GET /v2/relations`
+
+Returns the known relation IDs and human-readable names from the loaded model bundle. The frontend uses this catalog when a reviewer corrects a prediction.
+
+## V2 open-set prediction
+
+`POST /v2/relations:predict-open-set`
 
 Example body:
 
@@ -47,55 +66,134 @@ Example body:
     "start": 24,
     "end": 30
   },
-  "top_k": 5
+  "top_k": 5,
+  "profile": "balanced"
 }
 ```
 
-Offsets are zero-based and `end` is exclusive. The API rejects offsets that do not match the supplied entity text.
+Offsets are zero-based and `end` is exclusive.
 
-## Batch prediction
+The response contains calibrated top-k relation probabilities plus:
 
-`POST /v1/relations:predict-batch`
+- `model_id`;
+- `KNOWN_RELATION` or `UNKNOWN_RELATION`;
+- selected operating profile;
+- frozen threshold;
+- learned temperature;
+- inference latency.
 
-Up to 128 entity-pair examples are padded and evaluated in one Transformer batch.
+V2 prediction metadata is also recorded in the privacy-preserving telemetry store. Raw text is not written to telemetry.
 
-The Next.js frontend can import the following CSV schema and convert it to this endpoint:
+## V2 word influence explanation
 
-```text
-id,text,head_text,head_start,head_end,tail_text,tail_start,tail_end
+`POST /v2/relations:explain`
+
+Example:
+
+```json
+{
+  "text": "Marie Curie was born in Warsaw in 1867.",
+  "head": {
+    "text": "Marie Curie",
+    "start": 0,
+    "end": 11
+  },
+  "tail": {
+    "text": "Warsaw",
+    "start": 24,
+    "end": 30
+  },
+  "profile": "balanced",
+  "target_relation_id": "P19"
+}
 ```
 
-## Open-set prediction
+The endpoint groups tokenizer pieces into complete displayed words, masks one word at a time, evaluates all perturbed examples in a batch, and reports the change in calibrated confidence for the target relation.
 
-`POST /v1/relations:predict-open-set`
+For each word:
 
-Requires a bundle containing `open_set_config.json`.
+- positive `confidence_drop`: supports the target relation;
+- negative `confidence_drop`: opposes the target relation;
+- `normalized_influence`: signed value in [-1, 1] for UI intensity.
 
-The response includes:
+The result is perturbation-based evidence. It must not be interpreted as a causal explanation.
 
-- calibrated top-k probabilities;
-- acceptance threshold;
-- learned temperature;
-- `KNOWN_RELATION` or `UNKNOWN_RELATION`.
+## V2 feedback
 
-The threshold is trained on calibration-unknown relations, not on the final unseen-relation test split.
+`POST /v2/feedback`
 
-## Explanation
+Supported verdicts:
 
-`POST /v1/relations:explain`
+- `confirm`;
+- `correct`;
+- `unknown`;
+- `skip`.
 
-Uses token occlusion:
+A correction must contain `corrected_relation_name`.
 
-1. predict the top relation;
-2. mask candidate tokens one at a time;
-3. evaluate all occluded variants in a batch;
-4. rank tokens by confidence drop.
+Privacy behavior:
 
-Returned evidence is explicitly presented as an occlusion signal, not a causal model explanation.
+- raw sentence/entity values are not stored by default;
+- hashes and structured prediction metadata are stored;
+- raw sentence + entity spans are persisted only when `consent_to_store_text=true`.
+
+The frontend obtains valid known labels from `GET /v2/relations`.
+
+## V2 operational metrics
+
+`GET /v2/metrics/summary?limit=500`
+
+Returns a bounded recent-event aggregate containing:
+
+- prediction count;
+- KNOWN / UNKNOWN rates;
+- mean confidence;
+- mean latency;
+- p50 latency;
+- p95 latency;
+- counts by profile;
+- counts by model version.
+
+This is portfolio-scale operational telemetry, not a replacement for a high-throughput observability platform.
+
+## V2 model registry
+
+`GET /v2/models`
+
+Returns immutable model releases discovered under `models/releases/` plus the currently promoted model.
+
+Registration and promotion are explicit CLI actions; the serving API does not train or promote models.
+
+## V2 asynchronous batch jobs
+
+Create:
+
+`POST /v2/batch-jobs`
+
+The API accepts up to 2,000 entity-pair examples per durable job.
+
+Read state/results:
+
+`GET /v2/batch-jobs/{job_id}`
+
+Statuses:
+
+```text
+queued -> running -> succeeded
+                  -> failed
+```
+
+Production jobs are dispatched through Cloud Tasks and run in vectorized chunks.
+
+Internal callback:
+
+`POST /v2/internal/batch-jobs/{job_id}:run`
+
+This route is for the dedicated Cloud Tasks service identity only. The public Next.js proxy blocks `/v2/internal/*`.
 
 ## Logging policy
 
-The request middleware logs only metadata:
+The HTTP middleware logs only request metadata:
 
 - request ID;
 - method;
@@ -103,4 +201,6 @@ The request middleware logs only metadata:
 - response status;
 - latency.
 
-It does **not** log sentences, entity strings or request bodies.
+Prediction telemetry stores structured model metadata and a SHA-256 digest of the input, not raw sentences.
+
+Human-review text can be stored only through the explicit feedback consent flag.
