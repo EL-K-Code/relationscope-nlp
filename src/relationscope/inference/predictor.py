@@ -28,6 +28,21 @@ from relationscope.models.entity_classifier import (
     marker_positions,
 )
 
+
+def resolve_model_id(bundle_dir: Path) -> str:
+    """Return the promoted model version from manifest.json when available."""
+    manifest_path = bundle_dir / "manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+        model_version = manifest.get("model_version")
+        if isinstance(model_version, str) and model_version.strip():
+            return model_version.strip()
+    return bundle_dir.name
+
+
 SUPPORTED_OPEN_SET_PROFILES: tuple[OpenSetProfile, ...] = (
     "high_coverage",
     "balanced",
@@ -135,7 +150,7 @@ class RelationPredictor:
             device=self.device,
         )
         self.model, self.tokenizer, self.label_map = loaded
-        self.model_id = bundle_dir.name
+        self.model_id = resolve_model_id(bundle_dir)
 
         open_set_path = bundle_dir / "open_set_config.json"
         self.open_set_config: dict[str, object] | None = (
