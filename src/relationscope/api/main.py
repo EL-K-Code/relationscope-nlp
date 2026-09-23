@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 
 from relationscope.api.observability import RequestLoggingMiddleware
@@ -21,6 +22,8 @@ from relationscope.data.schema import (
 )
 from relationscope.inference.model_store import resolve_model_bundle
 from relationscope.inference.predictor import RelationPredictor
+
+load_dotenv(override=False)
 
 app = FastAPI(
     title="RelationScope NLP",
