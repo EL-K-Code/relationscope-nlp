@@ -7,7 +7,7 @@ import os
 from functools import lru_cache
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 
 from relationscope.api.observability import RequestLoggingMiddleware
 from relationscope.data.schema import (
@@ -253,9 +253,13 @@ def model_registry() -> ModelRegistryResponse:
 
 
 @app.post("/v2/batch-jobs", response_model=BatchJobSummary, status_code=202)
-def create_batch_job(request: BatchJobCreateRequest) -> BatchJobSummary:
+def create_batch_job(
+    request: BatchJobCreateRequest,
+    http_request: Request,
+) -> BatchJobSummary:
     try:
-        return get_batch_service().create(request)
+        api_base_url = str(http_request.base_url).rstrip("/")
+        return get_batch_service().create(request, api_base_url=api_base_url)
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
