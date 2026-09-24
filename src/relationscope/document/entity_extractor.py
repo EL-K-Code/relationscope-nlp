@@ -52,7 +52,7 @@ class HeuristicEntityExtractor:
         re.VERBOSE,
     )
 
-    _sentence_boundary = re.compile(r"(?<=[.!?])(?:\\s+|$)")
+    _sentence_boundary = re.compile(r"(?<=[.!?])(?:\s+|$)")
     _trailing_sentence_punctuation = ".,;:!?"
 
     @property
