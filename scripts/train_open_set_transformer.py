@@ -16,7 +16,9 @@ from tqdm import tqdm
 from transformers import get_linear_schedule_with_warmup
 
 from relationscope.data.io import read_jsonl
+from relationscope.data.markers import mark_character_spans
 from relationscope.data.schema import RelationRecord
+from relationscope.data.v3_schema import TrainingCandidate
 from relationscope.models.entity_classifier import (
     EntityAwareRelationClassifier,
     build_tokenizer,
@@ -140,6 +142,67 @@ def logits_only(
     return np.concatenate(logits)
 
 
+def load_review_snapshot(
+    path: Path,
+    *,
+    known_relation_ids: set[str],
+) -> tuple[list[RelationRecord], int]:
+    """Convert a reviewed V3 snapshot into additional known-relation training rows."""
+    included: list[RelationRecord] = []
+    skipped = 0
+
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                candidate = TrainingCandidate.model_validate_json(line)
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid reviewed snapshot row {line_number}: {exc}"
+                ) from exc
+
+            if (
+                candidate.relation_id is None
+                or candidate.relation_id not in known_relation_ids
+                or candidate.relation_name == "UNKNOWN_RELATION"
+            ):
+                skipped += 1
+                continue
+
+            included.append(
+                RelationRecord(
+                    relation_id=candidate.relation_id,
+                    relation_name=candidate.relation_name,
+                    relation_description="reviewed production feedback",
+                    tokens=candidate.text.split(),
+                    marked_text=mark_character_spans(
+                        candidate.text,
+                        candidate.head,
+                        candidate.tail,
+                    ),
+                    head_text=candidate.head.text,
+                    tail_text=candidate.tail.text,
+                    source_split="review_snapshot",
+                )
+            )
+    return included, skipped
+
+
+def accepted_known_accuracy(
+    probabilities: np.ndarray,
+    labels: np.ndarray,
+    *,
+    threshold: float,
+) -> float:
+    confidence = probabilities.max(axis=1)
+    mask = confidence >= threshold
+    if not mask.any():
+        return 0.0
+    predictions = probabilities.argmax(axis=1)
+    return float(np.mean(predictions[mask] == labels[mask]))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-name", default="answerdotai/ModernBERT-base")
@@ -150,6 +213,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-length", type=int, default=160)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--review-snapshot",
+        type=Path,
+        default=None,
+        help=(
+            "Optional V3 reviewed examples.jsonl snapshot. Only examples mapped "
+            "to existing known relation IDs are added to supervised training."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-model-version",
+        default="modernbert-open-set-candidate",
+        help="Model version written into candidate_report.json for promotion gates.",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -181,6 +258,26 @@ def main() -> None:
         }
         for relation_id, index in rel2id.items()
     }
+
+    review_included = 0
+    review_skipped = 0
+    if args.review_snapshot is not None:
+        reviewed, review_skipped = load_review_snapshot(
+            args.review_snapshot,
+            known_relation_ids=set(relation_ids),
+        )
+        train.extend(reviewed)
+        review_included = len(reviewed)
+        print(
+            json.dumps(
+                {
+                    "review_snapshot": str(args.review_snapshot),
+                    "included_known_examples": review_included,
+                    "skipped_unknown_or_unmapped": review_skipped,
+                },
+                indent=2,
+            )
+        )
 
     tokenizer = build_tokenizer(args.model_name)
     model = EntityAwareRelationClassifier(
@@ -342,6 +439,21 @@ def main() -> None:
         temperature,
     )
 
+    known_test_metrics = classification_metrics(
+        test_known_probabilities,
+        test_known_labels,
+    )
+    unseen_metrics = open_set_metrics(
+        test_known_probabilities,
+        test_unknown_probabilities,
+        threshold=threshold,
+    )
+    accepted_accuracy = accepted_known_accuracy(
+        test_known_probabilities,
+        test_known_labels,
+        threshold=threshold,
+    )
+
     report = {
         "protocol": "fewrel_open_set_56_known_8_calibration_unknown_16_test_unknown",
         "base_model": args.model_name,
@@ -349,26 +461,69 @@ def main() -> None:
         "temperature": temperature,
         "abstention_threshold": threshold,
         "best_validation_macro_f1": best_f1,
-        "known_test": classification_metrics(
-            test_known_probabilities,
-            test_known_labels,
-        ),
+        "known_test": known_test_metrics,
         "calibration_open_set": calibration_open_set,
-        "unseen_relation_test": open_set_metrics(
-            test_known_probabilities,
-            test_unknown_probabilities,
-            threshold=threshold,
-        ),
+        "unseen_relation_test": unseen_metrics,
         "risk_coverage": risk_coverage_curve(
             test_known_probabilities,
             test_known_labels,
         ),
+        "review_snapshot": {
+            "path": str(args.review_snapshot) if args.review_snapshot else None,
+            "included_known_examples": review_included,
+            "skipped_unknown_or_unmapped": review_skipped,
+        },
         "history": history,
+    }
+
+    candidate_report = {
+        "schema_version": "3.0-candidate",
+        "model": {
+            "model_version": args.candidate_model_version,
+            "base_model": args.model_name,
+            "pooling_mode": "entity_pair",
+            "input_view": "marked",
+            "temperature": temperature,
+            "default_profile": "balanced",
+        },
+        "protocol": {
+            "name": report["protocol"],
+        },
+        "known_test": {
+            "accuracy": known_test_metrics["accuracy"],
+            "macro_f1": known_test_metrics["macro_f1"],
+            "micro_f1": known_test_metrics["micro_f1"],
+            "top3_accuracy": known_test_metrics["top3_accuracy"],
+            "ece": known_test_metrics["ece_15"],
+        },
+        "final_unseen_test_balanced": {
+            "threshold": threshold,
+            "auroc": unseen_metrics["ood_auroc"],
+            "auprc": unseen_metrics["ood_auprc"],
+            "fpr95": unseen_metrics["ood_fpr95"],
+            "unknown_f1": unseen_metrics["unknown_f1"],
+            "known_acceptance": unseen_metrics["known_acceptance_rate"],
+            "unknown_rejection": unseen_metrics["unknown_rejection_rate"],
+        },
+        "profiles": {
+            "balanced": {
+                "threshold": threshold,
+                "known_acceptance": unseen_metrics["known_acceptance_rate"],
+                "accepted_known_accuracy": accepted_accuracy,
+                "unknown_rejection": unseen_metrics["unknown_rejection_rate"],
+                "unknown_f1": unseen_metrics["unknown_f1"],
+            }
+        },
+        "review_snapshot": report["review_snapshot"],
     }
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "metrics.json").write_text(
         json.dumps(report, indent=2),
+        encoding="utf-8",
+    )
+    (args.output_dir / "candidate_report.json").write_text(
+        json.dumps(candidate_report, indent=2),
         encoding="utf-8",
     )
     (best_dir / "open_set_config.json").write_text(
