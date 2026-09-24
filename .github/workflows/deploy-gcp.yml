@@ -25,39 +25,18 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      REGION: ${{ vars.GCP_REGION }}
-      REPOSITORY: ${{ vars.GAR_REPOSITORY }}
-      MODEL_BUCKET: ${{ vars.MODEL_BUCKET }}
-      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-      CLOUD_BUILD_SUBMITTER_MEMBER: ${{ vars.CLOUD_BUILD_SUBMITTER_MEMBER }}
+      PROJECT_ID: relationscope-nlp-2026
+      PROJECT_NUMBER: "495134911733"
+      REGION: europe-west1
+      REPOSITORY: relationscope
+      MODEL_BUCKET: relationscope-nlp-2026-models
+      TF_STATE_BUCKET: relationscope-nlp-2026-tfstate
+      CLOUD_BUILD_SUBMITTER_MEMBER: user:axeluobal@gmail.com
+      WIF_PROVIDER: projects/495134911733/locations/global/workloadIdentityPools/github-actions/providers/relationscope
+      DEPLOY_SERVICE_ACCOUNT: relationscope-deploy@relationscope-nlp-2026.iam.gserviceaccount.com
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
-      - name: Validate deployment configuration
-        shell: bash
-        env:
-          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
-          DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
-        run: |
-          set -euo pipefail
-          required=(
-            PROJECT_ID
-            REGION
-            REPOSITORY
-            MODEL_BUCKET
-            TF_STATE_BUCKET
-            CLOUD_BUILD_SUBMITTER_MEMBER
-            WIF_PROVIDER
-            DEPLOY_SERVICE_ACCOUNT
-          )
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "::error::Missing GitHub Actions repository variable: ${name}"
-              exit 1
-            fi
-          done
-
       - name: Checkout exact CI-tested commit
         uses: actions/checkout@v7
         with:
@@ -67,9 +46,9 @@ jobs:
         name: Authenticate to Google Cloud with WIF
         uses: google-github-actions/auth@v3
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
@@ -90,17 +69,6 @@ jobs:
           web_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/web:${short_sha}"
           echo "api=${api_tag}" >> "${GITHUB_OUTPUT}"
           echo "web=${web_tag}" >> "${GITHUB_OUTPUT}"
-          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
-
-      - name: Initialize production Terraform state
-        working-directory: infra/terraform
-        run: |
-          terraform init             -backend-config="bucket=${TF_STATE_BUCKET}"             -backend-config="prefix=terraform/state"
-
-      - name: Bootstrap deployment prerequisites
-        working-directory: infra/terraform
-        run: |
-          terraform apply -auto-approve             -var="project_id=${PROJECT_ID}"             -var="region=${REGION}"             -var="model_bucket_name=${MODEL_BUCKET}"             -var="artifact_repository=${REPOSITORY}"             -var="cloud_build_submitter_member=${CLOUD_BUILD_SUBMITTER_MEMBER}"             -var="api_image=${{ steps.tags.outputs.api }}"             -var="web_image=${{ steps.tags.outputs.web }}"             -target='google_project_service.required'             -target='google_artifact_registry_repository.containers'             -target='google_storage_bucket.models'             -target='google_service_account.api'             -target='google_service_account.web'
 
       - name: Build API image
         run: docker build -t "${{ steps.tags.outputs.api }}" .
@@ -136,8 +104,10 @@ jobs:
           echo "api=${api_ref}" >> "${GITHUB_OUTPUT}"
           echo "web=${web_ref}" >> "${GITHUB_OUTPUT}"
 
-          echo "API: ${api_ref}"
-          echo "WEB: ${web_ref}"
+      - name: Initialize production Terraform state
+        working-directory: infra/terraform
+        run: |
+          terraform init             -backend-config="bucket=${TF_STATE_BUCKET}"             -backend-config="prefix=terraform/state"
 
       - name: Create exact production plan
         working-directory: infra/terraform
