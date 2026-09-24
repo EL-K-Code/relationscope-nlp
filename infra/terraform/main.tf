@@ -202,6 +202,33 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
+        name  = "RELATIONSCOPE_DEPLOYMENT_VARIANT"
+        value = "champion"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_NER_MODEL"
+        value = var.ner_model
+      }
+
+      env {
+        name  = "RELATIONSCOPE_NER_DEVICE"
+        value = "cpu"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_CANARY_PERCENT"
+        value = tostring(var.canary_percent)
+      }
+
+      env {
+        name = "RELATIONSCOPE_CHALLENGER_API_URL"
+        value = var.enable_challenger ? (
+          google_cloud_run_v2_service.api_challenger[0].uri
+        ) : ""
+      }
+
+      env {
         name  = "RELATIONSCOPE_OPS_BUCKET"
         value = google_storage_bucket.operations.name
       }
@@ -275,6 +302,152 @@ resource "google_cloud_run_v2_service_iam_member" "batch_tasks_invoke_api" {
   member   = "serviceAccount:${google_service_account.batch_tasks.email}"
 }
 
+
+resource "google_cloud_run_v2_service" "api_challenger" {
+  count = var.enable_challenger ? 1 : 0
+
+  name                = var.challenger_service_name
+  location            = var.region
+  deletion_protection = false
+  ingress             = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    service_account = google_service_account.api.email
+    timeout         = "900s"
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = var.max_api_instances
+    }
+
+    containers {
+      name  = "api"
+      image = coalesce(var.challenger_api_image, var.api_image)
+
+      ports {
+        container_port = 8080
+      }
+
+      resources {
+        limits = {
+          cpu    = var.api_cpu
+          memory = var.api_memory
+        }
+      }
+
+      env {
+        name  = "RELATIONSCOPE_MODEL_DIR"
+        value = "/tmp/relationscope/challenger-model"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_MODEL_GCS_URI"
+        value = "gs://${google_storage_bucket.models.name}/${var.challenger_model_prefix}"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_MODEL_RELEASES_PREFIX"
+        value = "models/releases"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_DEVICE"
+        value = "cpu"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_DEPLOYMENT_VARIANT"
+        value = "challenger"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_NER_MODEL"
+        value = var.ner_model
+      }
+
+      env {
+        name  = "RELATIONSCOPE_NER_DEVICE"
+        value = "cpu"
+      }
+
+      env {
+        name  = "RELATIONSCOPE_OPS_BUCKET"
+        value = google_storage_bucket.operations.name
+      }
+
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+
+      env {
+        name  = "RELATIONSCOPE_TASK_LOCATION"
+        value = var.region
+      }
+
+      env {
+        name  = "RELATIONSCOPE_TASK_QUEUE"
+        value = google_cloud_tasks_queue.batch.name
+      }
+
+      env {
+        name  = "RELATIONSCOPE_TASK_SERVICE_ACCOUNT"
+        value = google_service_account.batch_tasks.email
+      }
+
+      startup_probe {
+        initial_delay_seconds = 1
+        timeout_seconds       = 2
+        period_seconds        = 5
+        failure_threshold     = 12
+
+        http_get {
+          path = "/health"
+          port = 8080
+        }
+      }
+
+      liveness_probe {
+        timeout_seconds = 2
+        period_seconds  = 30
+
+        http_get {
+          path = "/health"
+          port = 8080
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_service.required["run.googleapis.com"],
+    google_storage_bucket_iam_member.api_reads_models,
+    google_storage_bucket_iam_member.api_manages_operations,
+    google_project_iam_member.api_enqueues_batch_tasks,
+    google_service_account_iam_member.api_acts_as_batch_task_caller,
+  ]
+}
+
+resource "google_cloud_run_v2_service_iam_member" "web_invokes_challenger" {
+  count = var.enable_challenger ? 1 : 0
+
+  project  = var.project_id
+  location = google_cloud_run_v2_service.api_challenger[0].location
+  name     = google_cloud_run_v2_service.api_challenger[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.web.email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "batch_tasks_invoke_challenger" {
+  count = var.enable_challenger ? 1 : 0
+
+  project  = var.project_id
+  location = google_cloud_run_v2_service.api_challenger[0].location
+  name     = google_cloud_run_v2_service.api_challenger[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.batch_tasks.email}"
+}
+
 resource "google_cloud_run_v2_service" "web" {
   name                = var.web_service_name
   location            = var.region
@@ -314,6 +487,25 @@ resource "google_cloud_run_v2_service" "web" {
         value = google_cloud_run_v2_service.api.uri
       }
 
+      env {
+        name = "RELATIONSCOPE_CHALLENGER_API_URL"
+        value = var.enable_challenger ? (
+          google_cloud_run_v2_service.api_challenger[0].uri
+        ) : ""
+      }
+
+      env {
+        name = "RELATIONSCOPE_CHALLENGER_API_AUDIENCE"
+        value = var.enable_challenger ? (
+          google_cloud_run_v2_service.api_challenger[0].uri
+        ) : ""
+      }
+
+      env {
+        name  = "RELATIONSCOPE_CANARY_PERCENT"
+        value = tostring(var.canary_percent)
+      }
+
       startup_probe {
         initial_delay_seconds = 1
         timeout_seconds       = 2
@@ -330,6 +522,7 @@ resource "google_cloud_run_v2_service" "web" {
 
   depends_on = [
     google_cloud_run_v2_service_iam_member.web_invokes_api,
+    google_cloud_run_v2_service_iam_member.web_invokes_challenger,
   ]
 }
 

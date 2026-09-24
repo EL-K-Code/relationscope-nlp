@@ -1,13 +1,13 @@
 # RelationScope NLP
 
-**Explainable open-set relation extraction with a production MLOps feedback loop**
+**Document relation intelligence with open-set inference and governed continuous learning**
 
 RelationScope turns a sentence plus an explicit HEAD/TAIL entity pair into ranked relation predictions, calibrated confidence, and a defensible `UNKNOWN_RELATION` decision when the model is not confident enough.
 
 The project extends an ENSAI Advanced NLP lab by **Maxime Ferret and Alex Komla Labou** into a reproducible ML product: ModernBERT relation classification, controlled entity-marker ablations, open-set evaluation, word-level prediction influence, human feedback, durable batch inference, model lifecycle management, FastAPI/Next.js serving, Terraform, and Google Cloud.
 
 > **Current production checkpoint:** `v1.0.0` with `modernbert-open-set-v1.1`.  
-> **Current development line:** V2 adds explainability and ML operations around the frozen V1 model/evaluation without tuning on the final unseen test set.
+> **Current development line:** V3 adds automatic document intelligence, active learning, drift detection, versioned retraining data, promotion gates, champion/challenger canaries and rollback around the frozen benchmark.
 
 ## What V2 adds
 
@@ -99,6 +99,50 @@ production
 Promotion is auditable and model artifacts remain SHA-256 verified.
 
 See **[`docs/v2.md`](docs/v2.md)** for the complete design.
+
+## What V3 adds
+
+V3 completes the planned RelationScope roadmap:
+
+- raw text / PDF / TXT document analysis without manually supplied HEAD/TAIL spans;
+- automatic entity discovery with a deterministic offline fallback and optional transformer NER;
+- sentence-aware, bounded candidate-pair generation;
+- document-level knowledge graph assembly;
+- uncertainty-driven active-learning review queue;
+- explicit consent before raw review examples are persisted;
+- versioned reviewed datasets with SHA-256 manifests;
+- reviewed-data augmentation in the existing open-set training pipeline;
+- champion/challenger promotion gates on the frozen evaluation protocol;
+- production drift signals from confidence, UNKNOWN rate, text length and relation distribution;
+- optional private challenger Cloud Run service;
+- sticky deterministic canary routing in the public Next.js proxy;
+- audited model rollback.
+
+The intended lifecycle is:
+
+```text
+production
+   ↓
+telemetry + uncertain examples
+   ↓
+human review
+   ↓
+versioned dataset
+   ↓
+candidate retraining
+   ↓
+frozen evaluation
+   ↓
+promotion gates
+   ↓
+challenger canary
+   ↓
+promote / rollback
+```
+
+V3 does not introduce automatic self-training. Human review and explicit promotion remain required.
+
+See [`docs/v3.md`](docs/v3.md) for the complete design.
 
 ## Production model
 
@@ -349,11 +393,12 @@ uv run python scripts/export_feedback_dataset.py \
 ├── src/relationscope/
 │   ├── api/
 │   ├── data/
+│   ├── document/                 # V3 entity discovery + document graph pipeline
 │   ├── inference/
 │   ├── legacy/
 │   ├── models/
-│   ├── ops/                      # V2 telemetry/feedback/jobs/registry
-│   └── training/
+│   ├── ops/                      # telemetry, feedback, jobs, active learning, drift
+│   └── training/                 # calibration, dataset snapshots, promotion gates
 ├── tests/
 ├── Dockerfile
 ├── compose.yaml
@@ -393,6 +438,7 @@ V2 adds:
 See:
 
 - [`docs/v2.md`](docs/v2.md)
+- [`docs/v3.md`](docs/v3.md)
 - [`docs/architecture.md`](docs/architecture.md)
 - [`docs/gcp_deployment.md`](docs/gcp_deployment.md)
 
@@ -406,7 +452,10 @@ See:
 - Word occlusion is presented as perturbation evidence, not as a causal explanation.
 - Feedback is not automatically treated as ground truth.
 - Production serving does not trigger model training.
-- Raw text is absent from telemetry and requires explicit consent in the feedback path.
+- Raw text is absent from telemetry and requires explicit consent in feedback/review paths.
+- Automatic entity discovery is reported separately from relation-classification quality; the heuristic fallback is not presented as a benchmarked NER model.
+- Active-learning scores prioritize review but are not labels.
+- A challenger cannot be promoted solely by production traffic; frozen offline gates and explicit promotion remain required.
 
 ## Data and attribution
 

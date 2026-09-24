@@ -158,3 +158,88 @@ export type RelationCatalogItem = {
 export type RelationCatalog = {
   items: RelationCatalogItem[];
 };
+
+
+export type EntityMention = {
+  sentence_index: number;
+  start: number;
+  end: number;
+};
+
+export type DocumentEntity = {
+  entity_id: string;
+  text: string;
+  normalized_text: string;
+  label: string;
+  mentions: EntityMention[];
+};
+
+export type DocumentRelation = {
+  edge_id: string;
+  head_entity_id: string;
+  tail_entity_id: string;
+  head_text: string;
+  tail_text: string;
+  relation: Prediction;
+  decision: "KNOWN_RELATION" | "UNKNOWN_RELATION";
+  accepted: boolean;
+  profile: OpenSetProfile;
+  threshold: number;
+  sentence_index: number;
+  evidence_text: string;
+};
+
+export type DocumentAnalyzeResponse = {
+  document_id: string;
+  title: string | null;
+  model_id: string;
+  ner_model_id: string;
+  entities: DocumentEntity[];
+  relations: DocumentRelation[];
+  candidate_pairs: number;
+  processed_pairs: number;
+  review_candidates: number;
+  queued_for_review: number;
+  latency_ms: number;
+};
+
+export type DriftMetric = {
+  name: string;
+  baseline: number;
+  current: number;
+  delta: number;
+  threshold: number;
+  triggered: boolean;
+};
+
+export type DriftSummary = {
+  status: "insufficient_data" | "healthy" | "watch" | "alert";
+  baseline_events: number;
+  current_events: number;
+  relation_js_divergence: number;
+  metrics: DriftMetric[];
+  message: string;
+};
+
+export type CanaryStatus = {
+  enabled: boolean;
+  traffic_percent: number;
+  champion_model_id: string;
+  challenger_url_configured: boolean;
+  challenger_model_version: string | null;
+};
+
+export type LearningSummary = {
+  pending_review: number;
+  reviewed_examples: number;
+  dismissed_examples: number;
+  drift: DriftSummary;
+  canary: CanaryStatus;
+};
+
+export type ActiveLearningPolicy = {
+  uncertainty_weight: number;
+  boundary_weight: number;
+  unknown_bonus: number;
+  queue_threshold: number;
+};

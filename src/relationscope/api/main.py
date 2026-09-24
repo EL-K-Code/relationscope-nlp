@@ -5,9 +5,12 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache
+from io import BytesIO
+from typing import Annotated
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from pypdf import PdfReader
 
 from relationscope.api.observability import RequestLoggingMiddleware
 from relationscope.data.schema import (
@@ -18,6 +21,7 @@ from relationscope.data.schema import (
     ModelInfoResponse,
     OpenSetPredictRequest,
     OpenSetPredictResponse,
+    OpenSetProfile,
     PredictRequest,
     PredictResponse,
 )
@@ -33,9 +37,27 @@ from relationscope.data.v2_schema import (
     ModelRegistryResponse,
     RelationCatalogResponse,
 )
+from relationscope.data.v3_schema import (
+    ActiveLearningPolicyResponse,
+    CanaryStatusResponse,
+    ChallengerRegistrationRequest,
+    ChallengerRegistrationResponse,
+    DocumentAnalyzeRequest,
+    DocumentAnalyzeResponse,
+    DriftSummaryResponse,
+    LearningSummaryResponse,
+    ReviewDecisionRequest,
+    ReviewQueueItem,
+    ReviewQueueResponse,
+)
+from relationscope.document.analyzer import DocumentAnalyzer
+from relationscope.document.entity_extractor import build_entity_extractor
 from relationscope.inference.model_store import resolve_model_bundle
 from relationscope.inference.predictor import RelationPredictor
+from relationscope.ops.active_learning import ActiveLearningService
 from relationscope.ops.batch import BatchJobService, dispatcher_from_env
+from relationscope.ops.challenger import ChallengerService, canary_status
+from relationscope.ops.drift import DriftService
 from relationscope.ops.feedback import FeedbackService
 from relationscope.ops.registry import registry_from_env
 from relationscope.ops.store import get_operations_store
@@ -47,8 +69,11 @@ logger = logging.getLogger("relationscope.api")
 
 app = FastAPI(
     title="RelationScope NLP",
-    version="2.0.0",
-    description="Production relation extraction, open-set inference and ML operations API",
+    version="3.0.0",
+    description=(
+        "Production relation intelligence API with open-set inference, "
+        "document analysis and continuous-learning operations"
+    ),
 )
 app.add_middleware(RequestLoggingMiddleware)
 
@@ -83,6 +108,30 @@ def get_batch_service() -> BatchJobService:
     )
 
 
+@lru_cache(maxsize=1)
+def get_active_learning_service() -> ActiveLearningService:
+    return ActiveLearningService(get_operations_store())
+
+
+@lru_cache(maxsize=1)
+def get_drift_service() -> DriftService:
+    return DriftService(get_operations_store())
+
+
+@lru_cache(maxsize=1)
+def get_challenger_service() -> ChallengerService:
+    return ChallengerService(get_operations_store())
+
+
+@lru_cache(maxsize=1)
+def get_document_analyzer() -> DocumentAnalyzer:
+    return DocumentAnalyzer(
+        predictor=get_predictor(),
+        entity_extractor=build_entity_extractor(),
+        active_learning=get_active_learning_service(),
+    )
+
+
 def _record_prediction_safely(
     request: OpenSetPredictRequest,
     response: OpenSetPredictResponse,
@@ -96,6 +145,12 @@ def _record_prediction_safely(
             confidence=response.predictions[0].confidence,
             threshold=response.threshold,
             latency_ms=response.latency_ms,
+            relation_id=response.predictions[0].relation_id,
+            relation_name=response.predictions[0].relation_name,
+            deployment_variant=os.getenv(
+                "RELATIONSCOPE_DEPLOYMENT_VARIANT",
+                "champion",
+            ),
         )
     except Exception as exc:
         # Telemetry must never make inference unavailable.
@@ -296,3 +351,130 @@ def run_batch_job(job_id: str) -> BatchJobSummary:
         raise HTTPException(status_code=404, detail="batch job not found") from exc
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# V3 API — automatic document intelligence and continuous learning.
+# ---------------------------------------------------------------------------
+
+
+@app.post("/v3/documents:analyze", response_model=DocumentAnalyzeResponse)
+def analyze_document(request: DocumentAnalyzeRequest) -> DocumentAnalyzeResponse:
+    try:
+        return get_document_analyzer().analyze(request)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/v3/documents:upload", response_model=DocumentAnalyzeResponse)
+async def upload_document(
+    file: Annotated[UploadFile, File()],
+    profile: Annotated[OpenSetProfile, Form()] = "balanced",
+    include_unknown: Annotated[bool, Form()] = False,
+    max_candidate_pairs: Annotated[int, Form()] = 256,
+    consent_to_store_review_data: Annotated[bool, Form()] = False,
+) -> DocumentAnalyzeResponse:
+    raw = await file.read()
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="document exceeds the 10 MiB limit")
+
+    filename = file.filename or "document"
+    content_type = (file.content_type or "").lower()
+
+    try:
+        if filename.lower().endswith(".pdf") or content_type == "application/pdf":
+            reader = PdfReader(BytesIO(raw))
+            text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+        else:
+            text = raw.decode("utf-8")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="unable to extract UTF-8 text from the uploaded document",
+        ) from exc
+
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="document contains no extractable text")
+
+    request = DocumentAnalyzeRequest(
+        text=text,
+        title=filename,
+        profile=profile,
+        include_unknown=include_unknown,
+        max_candidate_pairs=max_candidate_pairs,
+        consent_to_store_review_data=consent_to_store_review_data,
+    )
+    return analyze_document(request)
+
+
+@app.get(
+    "/v3/active-learning/policy",
+    response_model=ActiveLearningPolicyResponse,
+)
+def active_learning_policy() -> ActiveLearningPolicyResponse:
+    return get_active_learning_service().policy()
+
+
+@app.get("/v3/drift", response_model=DriftSummaryResponse)
+def drift_summary(
+    limit: int = Query(default=400, ge=40, le=5_000),
+) -> DriftSummaryResponse:
+    return get_drift_service().summary(limit=limit)
+
+
+@app.get("/v3/canary", response_model=CanaryStatusResponse)
+def get_canary_status() -> CanaryStatusResponse:
+    return canary_status(
+        champion_model_id=get_predictor().model_id,
+        challenger_service=get_challenger_service(),
+    )
+
+
+@app.get("/v3/learning/summary", response_model=LearningSummaryResponse)
+def learning_summary() -> LearningSummaryResponse:
+    queue = get_operations_store().list_json("review/queue", limit=10_000)
+    pending = sum(item.get("status") == "pending" for item in queue)
+    reviewed = sum(item.get("status") == "reviewed" for item in queue)
+    dismissed = sum(item.get("status") == "dismissed" for item in queue)
+    return LearningSummaryResponse(
+        pending_review=pending,
+        reviewed_examples=reviewed,
+        dismissed_examples=dismissed,
+        drift=get_drift_service().summary(limit=400),
+        canary=get_canary_status(),
+    )
+
+
+@app.get(
+    "/v3/internal/review-queue",
+    response_model=ReviewQueueResponse,
+)
+def internal_review_queue(
+    limit: int = Query(default=100, ge=1, le=500),
+) -> ReviewQueueResponse:
+    return get_active_learning_service().list_pending(limit=limit)
+
+
+@app.post(
+    "/v3/internal/review-queue/{review_id}:review",
+    response_model=ReviewQueueItem,
+)
+def internal_review_decision(
+    review_id: str,
+    decision: ReviewDecisionRequest,
+) -> ReviewQueueItem:
+    item = get_active_learning_service().review(review_id, decision)
+    if item is None:
+        raise HTTPException(status_code=404, detail="review item not found")
+    return item
+
+
+@app.post(
+    "/v3/internal/challengers",
+    response_model=ChallengerRegistrationResponse,
+    status_code=201,
+)
+def internal_register_challenger(
+    request: ChallengerRegistrationRequest,
+) -> ChallengerRegistrationResponse:
+    return get_challenger_service().register(request)

@@ -121,3 +121,46 @@ variable "task_max_dispatches_per_second" {
   description = "Maximum Cloud Tasks dispatch rate for batch inference."
   default     = 1
 }
+
+
+variable "ner_model" {
+  type        = string
+  description = "Optional Hugging Face/local token-classification model used by V3 document intelligence. Empty uses the deterministic heuristic fallback."
+  default     = ""
+}
+
+variable "enable_challenger" {
+  type        = bool
+  description = "Provision the optional private challenger API used for canary evaluation."
+  default     = false
+}
+
+variable "challenger_service_name" {
+  type        = string
+  description = "Cloud Run service name for the optional V3 challenger."
+  default     = "relationscope-api-challenger"
+}
+
+variable "challenger_api_image" {
+  type        = string
+  description = "Optional immutable challenger API image. Defaults to api_image when null."
+  default     = null
+  nullable    = true
+}
+
+variable "challenger_model_prefix" {
+  type        = string
+  description = "Immutable model-bucket prefix loaded by the challenger service."
+  default     = "models/releases/modernbert-open-set-v1.1"
+}
+
+variable "canary_percent" {
+  type        = number
+  description = "Percentage of eligible public inference requests routed to the challenger."
+  default     = 0
+
+  validation {
+    condition     = var.canary_percent >= 0 && var.canary_percent <= 100
+    error_message = "canary_percent must be between 0 and 100."
+  }
+}

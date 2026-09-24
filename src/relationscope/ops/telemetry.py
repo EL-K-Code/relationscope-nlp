@@ -51,6 +51,9 @@ class TelemetryService:
         confidence: float,
         threshold: float,
         latency_ms: float,
+        relation_id: str | None = None,
+        relation_name: str | None = None,
+        deployment_variant: str | None = None,
     ) -> str:
         event_id = str(uuid.uuid4())
         now = _utc_now()
@@ -64,6 +67,9 @@ class TelemetryService:
             "confidence": float(confidence),
             "threshold": float(threshold),
             "latency_ms": float(latency_ms),
+            "relation_id": relation_id,
+            "relation_name": relation_name,
+            "deployment_variant": deployment_variant,
             "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "text_length": len(text),
         }

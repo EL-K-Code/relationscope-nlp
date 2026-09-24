@@ -204,3 +204,92 @@ The HTTP middleware logs only request metadata:
 Prediction telemetry stores structured model metadata and a SHA-256 digest of the input, not raw sentences.
 
 Human-review text can be stored only through the explicit feedback consent flag.
+
+
+## V3 document intelligence
+
+### Analyze raw text
+
+`POST /v3/documents:analyze`
+
+The caller provides document text, not entity spans. The response contains:
+
+- automatic entities with canonical IDs and mention offsets;
+- sentence-level candidate-pair counts;
+- accepted and optionally unknown relation edges;
+- document graph metadata;
+- active-learning candidate/queue counts;
+- relation and NER model IDs;
+- end-to-end document-analysis latency.
+
+### Upload PDF/TXT
+
+`POST /v3/documents:upload`
+
+Multipart form fields:
+
+- `file`: PDF or UTF-8 text;
+- `profile`: open-set operating profile;
+- `include_unknown`: whether UNKNOWN edges appear in the graph;
+- `max_candidate_pairs`: bounded pair-generation cap;
+- `consent_to_store_review_data`: explicit opt-in for uncertain raw sentence pairs entering the private review queue.
+
+Uploads are limited to 10 MiB.
+
+## V3 continuous learning
+
+Public aggregate endpoints:
+
+```text
+GET /v3/active-learning/policy
+GET /v3/drift
+GET /v3/canary
+GET /v3/learning/summary
+```
+
+Private reviewer/admin endpoints:
+
+```text
+GET  /v3/internal/review-queue
+POST /v3/internal/review-queue/{review_id}:review
+POST /v3/internal/challengers
+```
+
+The public Next.js proxy blocks every `/v3/internal/*` route.
+
+### Drift
+
+`GET /v3/drift` compares recent production telemetry with the preceding window using UNKNOWN-rate, confidence, input-length and predicted-relation-distribution signals.
+
+### Learning summary
+
+`GET /v3/learning/summary` exposes aggregate counts and canary/drift state only. It never returns review text.
+
+### Review queue
+
+The review queue stores raw text only for callers that explicitly consented during V3 document analysis.
+
+Reviewer decisions are:
+
+- `confirm`;
+- `correct`;
+- `unknown`;
+- `dismiss`.
+
+Reviewed examples may later enter a versioned dataset snapshot.
+
+## V3 deployment variant header
+
+The Next.js proxy adds:
+
+```text
+x-relationscope-variant: champion
+```
+
+or:
+
+```text
+x-relationscope-variant: challenger
+```
+
+for proxied responses when canary routing is configured.

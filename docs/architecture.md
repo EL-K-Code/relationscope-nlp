@@ -191,3 +191,87 @@ A model reaches production only through the explicit lifecycle:
 ```text
 train -> evaluate -> promotion gates -> register -> promote -> serve
 ```
+
+
+## V3 document intelligence plane
+
+```text
+PDF / TXT / raw text
+        |
+        v
+entity discovery
+        |
+        v
+sentence spans
+        |
+        v
+bounded ordered entity pairs
+        |
+        v
+open-set relation classifier
+        |
+        +--> accepted edges
+        |
+        +--> uncertain/UNKNOWN candidates
+        |
+        v
+document knowledge graph
+```
+
+The relation model remains sentence-level. V3 therefore generates candidates only within a sentence rather than claiming unsupported cross-sentence relation classification.
+
+## V3 continuous-learning plane
+
+```text
+prediction traffic
+      |
+      +--> privacy-preserving telemetry
+      |          |
+      |          v
+      |        drift
+      |
+      +--> uncertain example
+                |
+                | explicit consent
+                v
+          private review queue
+                |
+                v
+             reviewer
+                |
+                v
+        immutable dataset snapshot
+                |
+                v
+         candidate retraining
+                |
+                v
+         frozen evaluation
+                |
+                v
+          promotion gates
+                |
+                v
+         challenger release
+                |
+                v
+             canary
+          /           \
+      rollback       promote
+```
+
+Training remains offline. Production traffic cannot directly trigger a model promotion.
+
+## V3 canary boundary
+
+When enabled, Terraform provisions two private API services:
+
+```text
+                         champion
+                       /
+public Next.js proxy --
+                       \
+                         challenger
+```
+
+The proxy assigns a sticky canary key and deterministically routes the configured percentage of eligible inference requests. Both APIs use IAM-authenticated service-to-service calls. Reviewer/admin routes remain outside the public proxy.
