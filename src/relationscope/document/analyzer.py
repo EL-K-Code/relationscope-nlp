@@ -102,7 +102,7 @@ def _edge_id(
         (
             f"{head_entity_id}::{relation_id}::{tail_entity_id}::"
             f"{sentence_index}"
-        ).encode("utf-8"),
+        ).encode(),
         usedforsecurity=False,
     ).hexdigest()[:18]
     return f"edge_{digest}"
