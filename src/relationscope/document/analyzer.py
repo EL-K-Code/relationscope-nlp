@@ -86,7 +86,7 @@ def _normalize_entity(text: str) -> str:
 
 def _entity_id(normalized_text: str, label: str) -> str:
     digest = hashlib.sha1(
-        f"{label.casefold()}::{normalized_text}".encode("utf-8"),
+        f"{label.casefold()}::{normalized_text}".encode(),
         usedforsecurity=False,
     ).hexdigest()[:16]
     return f"ent_{digest}"
@@ -244,21 +244,23 @@ class DocumentAnalyzer:
                 continue
             top = response.predictions[0]
 
-            if self.active_learning is not None:
-                if self.active_learning.should_queue(response):
-                    review_candidates += 1
-                    queued = self.active_learning.enqueue(
-                        text=sentence.text,
-                        head=example.head,
-                        tail=example.tail,
-                        response=response,
-                        source_document_id=document_id,
-                        consent_to_store_review_data=(
-                            request.consent_to_store_review_data
-                        ),
-                    )
-                    if queued is not None:
-                        queued_for_review += 1
+            if (
+                self.active_learning is not None
+                and self.active_learning.should_queue(response)
+            ):
+                review_candidates += 1
+                queued = self.active_learning.enqueue(
+                    text=sentence.text,
+                    head=example.head,
+                    tail=example.tail,
+                    response=response,
+                    source_document_id=document_id,
+                    consent_to_store_review_data=(
+                        request.consent_to_store_review_data
+                    ),
+                )
+                if queued is not None:
+                    queued_for_review += 1
 
             if not response.accepted and not request.include_unknown:
                 continue
