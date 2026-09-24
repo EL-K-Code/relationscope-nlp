@@ -217,6 +217,18 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
+        name  = "RELATIONSCOPE_CANARY_PERCENT"
+        value = tostring(var.canary_percent)
+      }
+
+      env {
+        name = "RELATIONSCOPE_CHALLENGER_API_URL"
+        value = var.enable_challenger ? (
+          google_cloud_run_v2_service.api_challenger[0].uri
+        ) : ""
+      }
+
+      env {
         name  = "RELATIONSCOPE_OPS_BUCKET"
         value = google_storage_bucket.operations.name
       }
