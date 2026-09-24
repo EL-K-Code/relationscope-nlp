@@ -104,6 +104,10 @@ jobs:
           echo "api=${api_ref}" >> "${GITHUB_OUTPUT}"
           echo "web=${web_ref}" >> "${GITHUB_OUTPUT}"
 
+      - name: Ensure Terraform control-plane APIs
+        run: |
+          gcloud services enable             cloudresourcemanager.googleapis.com             --project="${PROJECT_ID}"
+
       - name: Initialize production Terraform state
         working-directory: infra/terraform
         run: |
