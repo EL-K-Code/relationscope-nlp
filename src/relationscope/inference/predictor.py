@@ -57,6 +57,11 @@ SUPPORTED_OPEN_SET_PROFILES: tuple[OpenSetProfile, ...] = (
 )
 
 
+def contains_entity_marker_fragment(word: str) -> bool:
+    """Return True when a lexical chunk contains a structural entity marker."""
+    return any(marker in word for marker in ENTITY_MARKERS)
+
+
 def resolve_device(requested: str = "auto") -> torch.device:
     if requested == "auto":
         if torch.cuda.is_available():
@@ -548,7 +553,11 @@ class RelationPredictor:
         groups: list[tuple[str, int, int, list[int]]] = []
         for match in re.finditer(r"\S+", model_text):
             word = match.group(0)
-            if word in ENTITY_MARKERS:
+            # Entity markers can be adjacent to punctuation in marked text
+            # (for example "[/TAIL]."). Exclude any lexical chunk that
+            # contains a control marker so the explanation never attributes
+            # model influence to RelationScope's own structural tokens.
+            if contains_entity_marker_fragment(word):
                 continue
 
             positions: list[int] = []
