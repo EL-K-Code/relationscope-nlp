@@ -1,93 +1,166 @@
 name: Deploy to GCP
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: relationscope-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success'
+      }}
     runs-on: ubuntu-latest
+
     env:
-      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      REGION: ${{ vars.GCP_REGION }}
-      REPOSITORY: ${{ vars.GAR_REPOSITORY }}
-      MODEL_BUCKET: ${{ vars.MODEL_BUCKET }}
-      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      PROJECT_ID: relationscope-nlp-2026
+      PROJECT_NUMBER: "495134911733"
+      REGION: europe-west1
+      REPOSITORY: relationscope
+      MODEL_BUCKET: relationscope-nlp-2026-models
+      TF_STATE_BUCKET: relationscope-nlp-2026-tfstate
+      CLOUD_BUILD_SUBMITTER_MEMBER: user:axeluobal@gmail.com
+      WIF_PROVIDER: projects/495134911733/locations/global/workloadIdentityPools/github-actions/providers/relationscope
+      DEPLOY_SERVICE_ACCOUNT: relationscope-deploy@relationscope-nlp-2026.iam.gserviceaccount.com
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout exact CI-tested commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - id: auth
+        name: Authenticate to Google Cloud with WIF
         uses: google-github-actions/auth@v3
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/setup-gcloud@v3
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Configure Artifact Registry Docker auth
         run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-      - name: Compute immutable image references
-        id: images
+      - name: Compute immutable build tags
+        id: tags
         shell: bash
         run: |
-          API_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/api:${GITHUB_SHA}"
-          WEB_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/web:${GITHUB_SHA}"
-          echo "api=${API_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "web=${WEB_IMAGE}" >> "$GITHUB_OUTPUT"
-
-      - name: Initialize Terraform
-        working-directory: infra/terraform
-        run: |
-          terraform init \
-            -backend-config="bucket=${TF_STATE_BUCKET}" \
-            -backend-config="prefix=terraform/state"
-
-      - name: Bootstrap registries, bucket and service identities
-        working-directory: infra/terraform
-        run: |
-          terraform apply -auto-approve \
-            -var="project_id=${PROJECT_ID}" \
-            -var="region=${REGION}" \
-            -var="model_bucket_name=${MODEL_BUCKET}" \
-            -var="artifact_repository=${REPOSITORY}" \
-            -var="api_image=${{ steps.images.outputs.api }}" \
-            -var="web_image=${{ steps.images.outputs.web }}" \
-            -target='google_project_service.required' \
-            -target='google_artifact_registry_repository.containers' \
-            -target='google_storage_bucket.models' \
-            -target='google_service_account.api' \
-            -target='google_service_account.web'
+          set -euo pipefail
+          short_sha="${DEPLOY_SHA:0:12}"
+          api_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/api:${short_sha}"
+          web_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/web:${short_sha}"
+          echo "api=${api_tag}" >> "${GITHUB_OUTPUT}"
+          echo "web=${web_tag}" >> "${GITHUB_OUTPUT}"
 
       - name: Build API image
-        run: docker build -t "${{ steps.images.outputs.api }}" .
+        run: docker build -t "${{ steps.tags.outputs.api }}" .
 
       - name: Build web image
-        run: docker build -t "${{ steps.images.outputs.web }}" apps/web
+        run: docker build -t "${{ steps.tags.outputs.web }}" apps/web
 
       - name: Push images
         run: |
-          docker push "${{ steps.images.outputs.api }}"
-          docker push "${{ steps.images.outputs.web }}"
+          set -euo pipefail
+          docker push "${{ steps.tags.outputs.api }}"
+          docker push "${{ steps.tags.outputs.web }}"
 
-      - name: Apply complete infrastructure
+      - name: Resolve immutable Artifact Registry digests
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          api_tag="${{ steps.tags.outputs.api }}"
+          web_tag="${{ steps.tags.outputs.web }}"
+
+          api_digest="$(gcloud artifacts docker images describe             "${api_tag}"             --project="${PROJECT_ID}"             --format='value(image_summary.digest)')"
+
+          web_digest="$(gcloud artifacts docker images describe             "${web_tag}"             --project="${PROJECT_ID}"             --format='value(image_summary.digest)')"
+
+          [[ "${api_digest}" == sha256:* ]]
+          [[ "${web_digest}" == sha256:* ]]
+
+          api_ref="${api_tag%:*}@${api_digest}"
+          web_ref="${web_tag%:*}@${web_digest}"
+
+          echo "api=${api_ref}" >> "${GITHUB_OUTPUT}"
+          echo "web=${web_ref}" >> "${GITHUB_OUTPUT}"
+
+      - name: Initialize production Terraform state
         working-directory: infra/terraform
         run: |
-          terraform apply -auto-approve \
-            -var="project_id=${PROJECT_ID}" \
-            -var="region=${REGION}" \
-            -var="model_bucket_name=${MODEL_BUCKET}" \
-            -var="artifact_repository=${REPOSITORY}" \
-            -var="api_image=${{ steps.images.outputs.api }}" \
-            -var="web_image=${{ steps.images.outputs.web }}"
+          terraform init             -backend-config="bucket=${TF_STATE_BUCKET}"             -backend-config="prefix=terraform/state"
 
-      - name: Print public URL
+      - name: Create exact production plan
         working-directory: infra/terraform
-        run: terraform output web_url
+        run: |
+          terraform plan             -out=deploy.tfplan             -var="project_id=${PROJECT_ID}"             -var="region=${REGION}"             -var="model_bucket_name=${MODEL_BUCKET}"             -var="artifact_repository=${REPOSITORY}"             -var="cloud_build_submitter_member=${CLOUD_BUILD_SUBMITTER_MEMBER}"             -var="api_image=${{ steps.images.outputs.api }}"             -var="web_image=${{ steps.images.outputs.web }}"
+
+      - name: Reject destructive production plans
+        working-directory: infra/terraform
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform show -json deploy.tfplan > deploy-plan.json
+          destructive_count="$(
+            jq '[
+              .resource_changes[]?
+              | select(.change.actions | index("delete"))
+            ] | length' deploy-plan.json
+          )"
+
+          if [[ "${destructive_count}" != "0" ]]; then
+            echo "::error::Terraform plan contains ${destructive_count} destructive resource change(s)."
+            terraform show -no-color deploy.tfplan
+            exit 1
+          fi
+
+          echo "Terraform safety gate passed: 0 destructive changes."
+
+      - name: Apply exact production plan
+        working-directory: infra/terraform
+        run: terraform apply -auto-approve deploy.tfplan
+
+      - name: Smoke test deployed production
+        working-directory: infra/terraform
+        shell: bash
+        run: |
+          set -euo pipefail
+          web_url="$(terraform output -raw web_url)"
+
+          curl -fsS             --retry 12             --retry-delay 10             --retry-all-errors             "${web_url}/api/relationscope/v2/model"
+
+          curl -fsS             --retry 6             --retry-delay 5             --retry-all-errors             "${web_url}/api/relationscope/v3/learning/summary"
+
+      - name: Deployment summary
+        working-directory: infra/terraform
+        shell: bash
+        run: |
+          {
+            echo "## RelationScope production deployment"
+            echo
+            echo "- Commit: \`${DEPLOY_SHA}\`"
+            echo "- API: \`${{ steps.images.outputs.api }}\`"
+            echo "- Web: \`${{ steps.images.outputs.web }}\`"
+            echo "- Public URL: $(terraform output -raw web_url)"
+            echo "- Terraform safety gate: **0 destructive changes**"
+            echo "- Smoke tests: **passed**"
+          } >> "${GITHUB_STEP_SUMMARY}"
