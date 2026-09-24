@@ -6,8 +6,10 @@ import {
   Braces,
   BrainCircuit,
   CheckCircle2,
+  FileText,
   FileUp,
   FlaskConical,
+  GitBranch,
   MessageSquareText,
   Network,
   RefreshCw,
@@ -16,6 +18,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ContinuousLearningPanel } from "@/components/continuous-learning-panel";
+import { DocumentIntelligencePanel } from "@/components/document-intelligence-panel";
 import { KnowledgeGraph } from "@/components/knowledge-graph";
 import { RiskCoverageChart } from "@/components/risk-coverage-chart";
 import {
@@ -50,7 +54,7 @@ import type {
   RelationCatalogItem,
 } from "@/lib/types";
 
-type Tab = "extract" | "batch" | "ops" | "lab";
+type Tab = "extract" | "document" | "batch" | "learning" | "ops" | "lab";
 
 const PROFILE_ORDER: OpenSetProfile[] = [
   "high_coverage",
@@ -315,7 +319,7 @@ export function RelationScopeStudio() {
           <div className="brandMark">R</div>
           <div>
             <strong>RelationScope</strong>
-            <span>NLP Studio · V2</span>
+            <span>Relation Intelligence · V3</span>
           </div>
         </div>
 
@@ -327,10 +331,22 @@ export function RelationScopeStudio() {
             <Sparkles size={18} /> Extract
           </button>
           <button
+            className={tab === "document" ? "navActive" : ""}
+            onClick={() => setTab("document")}
+          >
+            <FileText size={18} /> Document
+          </button>
+          <button
             className={tab === "batch" ? "navActive" : ""}
             onClick={() => setTab("batch")}
           >
             <FileUp size={18} /> Async Batch
+          </button>
+          <button
+            className={tab === "learning" ? "navActive" : ""}
+            onClick={() => setTab("learning")}
+          >
+            <GitBranch size={18} /> Learning
           </button>
           <button
             className={tab === "ops" ? "navActive" : ""}
@@ -363,7 +379,7 @@ export function RelationScopeStudio() {
       <section className="content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">RELATION EXTRACTION · OPEN SET · MLOPS</p>
+            <p className="eyebrow">DOCUMENT INTELLIGENCE · OPEN SET · CONTINUOUS LEARNING</p>
             <h1>
               From text to <span>structured knowledge.</span>
             </h1>
@@ -372,6 +388,7 @@ export function RelationScopeStudio() {
             <span><BrainCircuit size={15} /> word influence</span>
             <span><ShieldCheck size={15} /> calibrated</span>
             <span><Activity size={15} /> observable</span>
+            <span><GitBranch size={15} /> continuously improving</span>
           </div>
         </header>
 
@@ -584,7 +601,7 @@ export function RelationScopeStudio() {
 
               {!explanation ? (
                 <p className="muted">
-                  V2 masks each complete word and re-runs the target relation to
+                  RelationScope masks each complete word and re-runs the target relation to
                   measure how its calibrated confidence changes.
                 </p>
               ) : (
@@ -704,6 +721,8 @@ export function RelationScopeStudio() {
           </div>
         )}
 
+        {tab === "document" && <DocumentIntelligencePanel />}
+
         {tab === "batch" && (
           <div className="workspace singleColumn">
             <section className="panel">
@@ -822,6 +841,8 @@ export function RelationScopeStudio() {
             </section>
           </div>
         )}
+
+        {tab === "learning" && <ContinuousLearningPanel />}
 
         {tab === "ops" && (
           <div className="labGrid">
