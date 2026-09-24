@@ -52,6 +52,9 @@ class HeuristicEntityExtractor:
         re.VERBOSE,
     )
 
+    _sentence_boundary = re.compile(r"(?<=[.!?])(?:\\s+|$)")
+    _trailing_sentence_punctuation = ".,;:!?"
+
     @property
     def model_id(self) -> str:
         return "heuristic-capitalized-entities-v1"
@@ -59,37 +62,52 @@ class HeuristicEntityExtractor:
     def extract(self, text: str) -> list[EntityMentionCandidate]:
         candidates: list[EntityMentionCandidate] = []
         seen: set[tuple[int, int]] = set()
-        for match in self._pattern.finditer(text):
-            raw = match.group(1).strip()
-            if len(raw) < 2:
-                continue
-            start = match.start(1)
-            end = match.end(1)
-            key = (start, end)
-            if key in seen:
-                continue
-            seen.add(key)
 
-            label = "ORG" if any(
-                marker in raw
-                for marker in (
-                    "University",
-                    "Institute",
-                    "Inc",
-                    "Ltd",
-                    "Corp",
-                    "Company",
-                    "Bank",
+        segment_start = 0
+        segment_ranges: list[tuple[int, int]] = []
+        for boundary in self._sentence_boundary.finditer(text):
+            segment_ranges.append((segment_start, boundary.start()))
+            segment_start = boundary.end()
+        if segment_start < len(text):
+            segment_ranges.append((segment_start, len(text)))
+        elif not segment_ranges and text:
+            segment_ranges.append((0, len(text)))
+
+        for segment_start, segment_end in segment_ranges:
+            segment = text[segment_start:segment_end]
+            for match in self._pattern.finditer(segment):
+                raw = match.group(1).strip()
+                raw = raw.rstrip(self._trailing_sentence_punctuation)
+                if len(raw) < 2:
+                    continue
+
+                start = segment_start + match.start(1)
+                end = start + len(raw)
+                key = (start, end)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                label = "ORG" if any(
+                    marker in raw
+                    for marker in (
+                        "University",
+                        "Institute",
+                        "Inc",
+                        "Ltd",
+                        "Corp",
+                        "Company",
+                        "Bank",
+                    )
+                ) else "ENTITY"
+                candidates.append(
+                    EntityMentionCandidate(
+                        text=raw,
+                        start=start,
+                        end=end,
+                        label=label,
+                    )
                 )
-            ) else "ENTITY"
-            candidates.append(
-                EntityMentionCandidate(
-                    text=raw,
-                    start=start,
-                    end=end,
-                    label=label,
-                )
-            )
         return candidates
 
 
