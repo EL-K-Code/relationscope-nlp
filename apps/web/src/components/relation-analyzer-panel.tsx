@@ -447,7 +447,7 @@ export function RelationAnalyzerPanel({
                     ? `Known catalog relation · ${matchedCorrection.relation_id} · eligible for reviewed retraining when text consent is enabled.`
                     : "New relation suggestion · recorded for ontology review, but not trainable by the current 56-class model."}
                 </div>
-              )
+              )}
               <label className="privacyToggle">
                 <input
                   type="checkbox"
