@@ -52,6 +52,7 @@ from relationscope.data.v3_schema import (
 )
 from relationscope.document.analyzer import DocumentAnalyzer
 from relationscope.document.entity_extractor import build_entity_extractor
+from relationscope.document.pdf_text import normalize_pdf_pages
 from relationscope.inference.model_store import resolve_model_bundle
 from relationscope.inference.predictor import RelationPredictor
 from relationscope.ops.active_learning import ActiveLearningService
@@ -384,7 +385,9 @@ async def upload_document(
     try:
         if filename.lower().endswith(".pdf") or content_type == "application/pdf":
             reader = PdfReader(BytesIO(raw))
-            text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+            text = normalize_pdf_pages(
+                [page.extract_text() or "" for page in reader.pages]
+            )
         else:
             text = raw.decode("utf-8")
     except Exception as exc:

@@ -137,6 +137,35 @@ def test_heuristic_ner_does_not_cross_sentence_boundaries() -> None:
     assert all(not item.text.endswith((".", "!", "?")) for item in entities)
 
 
+def test_document_analyzer_ignores_multiline_layout_fragments() -> None:
+    analyzer = DocumentAnalyzer(
+        predictor=FakePredictor(),  # type: ignore[arg-type]
+        entity_extractor=HeuristicEntityExtractor(),
+    )
+    text = (
+        "RelationScope V3 - PDF Smoke Test\n"
+        "Albert Einstein worked at Princeton University.\n"
+        "Expected pipeline checks\n"
+        "Candidate generation\n"
+        "Entity pairs should be generated only within the same sentence."
+    )
+
+    result = analyzer.analyze(
+        DocumentAnalyzeRequest(
+            text=text,
+            profile="balanced",
+            include_unknown=True,
+        )
+    )
+
+    assert [item.text for item in result.entities] == [
+        "Albert Einstein",
+        "Princeton University",
+    ]
+    assert result.candidate_pairs == 2
+    assert result.processed_pairs == 2
+
+
 def test_document_analyzer_builds_graph_and_queues_uncertain_pair(
     tmp_path: Path,
 ) -> None:

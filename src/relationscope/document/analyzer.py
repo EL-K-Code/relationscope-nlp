@@ -34,7 +34,7 @@ def split_sentences(text: str) -> list[SentenceSpan]:
     """Return stable sentence spans while preserving document offsets."""
     spans: list[SentenceSpan] = []
     cursor = 0
-    pattern = re.compile(r"(?<=[.!?])(?:\s+|$)")
+    pattern = re.compile(r"(?<=[.!?])(?:[ \t]+|$)|\n+")
 
     for match in pattern.finditer(text):
         end = match.start()
@@ -77,6 +77,18 @@ def split_sentences(text: str) -> list[SentenceSpan]:
             )
         )
     return spans
+
+
+def _is_relation_context(sentence: SentenceSpan, *, document_has_line_breaks: bool) -> bool:
+    """Ignore unpunctuated layout fragments in multiline documents.
+
+    Single-line API inputs remain backwards compatible even without terminal
+    punctuation. In uploaded/multiline documents, headings and table labels
+    should not become graph nodes or relation candidates.
+    """
+    if sentence.text.rstrip().endswith((".", "!", "?")):
+        return True
+    return not document_has_line_breaks
 
 
 def _normalize_entity(text: str) -> str:
@@ -137,6 +149,7 @@ class DocumentAnalyzer:
         document_id = f"doc_{uuid.uuid4().hex}"
         sentences = split_sentences(request.text)
         mentions = self.entity_extractor.extract(request.text)
+        document_has_line_breaks = "\n" in request.text
 
         canonical_mentions: dict[
             tuple[str, str],
@@ -150,7 +163,14 @@ class DocumentAnalyzer:
         for mention in mentions:
             sentence = self._sentence_for_mention(mention, sentences)
             normalized = _normalize_entity(mention.text)
-            if sentence is None or not normalized:
+            if (
+                sentence is None
+                or not normalized
+                or not _is_relation_context(
+                    sentence,
+                    document_has_line_breaks=document_has_line_breaks,
+                )
+            ):
                 continue
             key = (normalized, mention.label)
             entity_id = _entity_id(normalized, mention.label)
