@@ -6,6 +6,7 @@ import logging
 import os
 from functools import lru_cache
 from io import BytesIO
+from typing import Annotated
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -20,9 +21,9 @@ from relationscope.data.schema import (
     ModelInfoResponse,
     OpenSetPredictRequest,
     OpenSetPredictResponse,
+    OpenSetProfile,
     PredictRequest,
     PredictResponse,
-    OpenSetProfile,
 )
 from relationscope.data.v2_schema import (
     BatchJobCreateRequest,
@@ -367,11 +368,11 @@ def analyze_document(request: DocumentAnalyzeRequest) -> DocumentAnalyzeResponse
 
 @app.post("/v3/documents:upload", response_model=DocumentAnalyzeResponse)
 async def upload_document(
-    file: UploadFile = File(...),
-    profile: OpenSetProfile = Form("balanced"),
-    include_unknown: bool = Form(False),
-    max_candidate_pairs: int = Form(256),
-    consent_to_store_review_data: bool = Form(False),
+    file: Annotated[UploadFile, File()],
+    profile: Annotated[OpenSetProfile, Form()] = "balanced",
+    include_unknown: Annotated[bool, Form()] = False,
+    max_candidate_pairs: Annotated[int, Form()] = 256,
+    consent_to_store_review_data: Annotated[bool, Form()] = False,
 ) -> DocumentAnalyzeResponse:
     raw = await file.read()
     if len(raw) > 10 * 1024 * 1024:
