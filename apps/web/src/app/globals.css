@@ -1650,3 +1650,389 @@ tbody tr:last-child td {
     display: grid;
   }
 }
+
+
+/* RelationScope V3 --------------------------------------------------------- */
+
+.documentWorkspace {
+  display: grid;
+  gap: 16px;
+}
+
+.documentInputPanel,
+.documentSummary,
+.documentTables {
+  padding: 22px;
+}
+
+.documentInputPanel textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.documentControls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(180px, 1fr) minmax(260px, 1.4fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.documentControls > label:first-child {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.documentControls select {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  background: #0b0f15;
+  outline: none;
+}
+
+.inlineCheck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: #0b0f15;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.inlineCheck input {
+  flex: 0 0 auto;
+}
+
+.documentActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.uploadDocumentButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.uploadDocumentButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.documentEmpty {
+  display: grid;
+  place-items: center;
+  min-height: 250px;
+  padding: 40px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.documentEmpty strong {
+  margin-top: 12px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.documentEmpty p {
+  max-width: 520px;
+  margin: 7px auto 0;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.documentMetricGrid,
+.learningMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.documentMetricGrid > div,
+.learningMetricGrid > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0b0f15;
+}
+
+.documentMetricGrid small,
+.documentMetricGrid strong,
+.learningMetricGrid small,
+.learningMetricGrid strong {
+  display: block;
+}
+
+.documentMetricGrid small,
+.learningMetricGrid small {
+  color: #687286;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.documentMetricGrid strong,
+.learningMetricGrid strong {
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.documentMeta span {
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #6d788d;
+  background: #0b0f15;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+}
+
+.documentTables {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.75fr) minmax(520px, 1.25fr);
+  gap: 16px;
+}
+
+.documentTableBlock {
+  min-width: 0;
+}
+
+.documentGraph {
+  margin-top: 0;
+}
+
+.documentUnknownEdge {
+  stroke-dasharray: 7 6;
+  opacity: 0.45;
+}
+
+.nodeTypeLabel {
+  fill: #667187;
+  text-anchor: middle;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 6px;
+  letter-spacing: 0.08em;
+}
+
+.learningGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.learningHero {
+  grid-column: 1 / -1;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 84% 0%, rgba(157, 246, 206, 0.07), transparent 28rem),
+    linear-gradient(180deg, rgba(20, 24, 34, 0.97), rgba(14, 17, 24, 0.97));
+}
+
+.driftCard,
+.policyCard,
+.canaryCard {
+  padding: 22px;
+}
+
+.canaryCard {
+  grid-column: 1 / -1;
+}
+
+.driftRows {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.driftRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0b0f15;
+}
+
+.driftRow.triggered {
+  border-color: rgba(255, 171, 102, 0.35);
+  background: rgba(255, 171, 102, 0.045);
+}
+
+.driftRow strong,
+.driftRow span {
+  display: block;
+}
+
+.driftRow strong {
+  color: var(--text);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.driftRow span {
+  margin-top: 3px;
+  color: #69758a;
+  font-size: 8px;
+}
+
+.driftRow em {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.policyWeights {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.policyWeights > div {
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0b0f15;
+}
+
+.policyWeights span,
+.policyWeights strong {
+  display: block;
+}
+
+.policyWeights span {
+  color: #687286;
+  font-size: 8px;
+}
+
+.policyWeights strong {
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.canaryFlow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.canaryFlow span {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #bac3d2;
+  background: #0b0f15;
+  font-size: 9px;
+}
+
+.canaryFlow b {
+  color: #536078;
+  font-weight: 500;
+}
+
+.canaryState {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 13px;
+  border: 1px solid rgba(157, 246, 206, 0.2);
+  border-radius: 10px;
+  color: var(--accent);
+  background: rgba(157, 246, 206, 0.04);
+}
+
+.canaryState small,
+.canaryState strong,
+.canaryState span {
+  display: block;
+}
+
+.canaryState small {
+  color: #718079;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.canaryState strong {
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.canaryState span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+@media (max-width: 1100px) {
+  .documentMetricGrid,
+  .learningMetricGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .documentTables {
+    grid-template-columns: 1fr;
+  }
+
+  .documentControls {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .learningGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .learningHero,
+  .canaryCard {
+    grid-column: auto;
+  }
+
+  .documentMetricGrid,
+  .learningMetricGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .policyWeights {
+    grid-template-columns: 1fr;
+  }
+}
