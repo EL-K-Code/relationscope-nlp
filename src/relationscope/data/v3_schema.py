@@ -196,3 +196,11 @@ class TrainingCandidate(BaseModel):
     relation_name: str
     source: Literal["feedback", "active_learning"]
     source_id: str
+
+
+class LearningSummaryResponse(BaseModel):
+    pending_review: int = Field(ge=0)
+    reviewed_examples: int = Field(ge=0)
+    dismissed_examples: int = Field(ge=0)
+    drift: DriftSummaryResponse
+    canary: CanaryStatusResponse
