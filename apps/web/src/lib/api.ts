@@ -2,8 +2,11 @@ import type {
   BatchInput,
   BatchJobResponse,
   BatchJobSummary,
+  ActiveLearningPolicy,
+  DocumentAnalyzeResponse,
   FeedbackResponse,
   InfluenceExplainResponse,
+  LearningSummary,
   MetricsSummary,
   ModelInfo,
   ModelRegistry,
@@ -136,4 +139,58 @@ export async function getModelRegistry(): Promise<ModelRegistry> {
 
 export async function getRelationCatalog(): Promise<RelationCatalog> {
   return request<RelationCatalog>("/v2/relations");
+}
+
+
+export async function analyzeDocument(input: {
+  text: string;
+  title?: string | null;
+  profile: OpenSetProfile;
+  include_unknown?: boolean;
+  max_candidate_pairs?: number;
+  consent_to_store_review_data?: boolean;
+}): Promise<DocumentAnalyzeResponse> {
+  return request<DocumentAnalyzeResponse>("/v3/documents:analyze", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function uploadDocument(
+  file: File,
+  options: {
+    profile: OpenSetProfile;
+    includeUnknown?: boolean;
+    maxCandidatePairs?: number;
+    consentToStoreReviewData?: boolean;
+  },
+): Promise<DocumentAnalyzeResponse> {
+  const form = new FormData();
+  form.set("file", file);
+  form.set("profile", options.profile);
+  form.set("include_unknown", String(options.includeUnknown ?? false));
+  form.set("max_candidate_pairs", String(options.maxCandidatePairs ?? 256));
+  form.set(
+    "consent_to_store_review_data",
+    String(options.consentToStoreReviewData ?? false),
+  );
+
+  const response = await fetch(`${API_BASE}/v3/documents:upload`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `Request failed with status ${response.status}`);
+  }
+  return (await response.json()) as DocumentAnalyzeResponse;
+}
+
+export async function getLearningSummary(): Promise<LearningSummary> {
+  return request<LearningSummary>("/v3/learning/summary");
+}
+
+export async function getActiveLearningPolicy(): Promise<ActiveLearningPolicy> {
+  return request<ActiveLearningPolicy>("/v3/active-learning/policy");
 }
