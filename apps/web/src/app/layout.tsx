@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RelationScope NLP",
+  title: "RelationScope · Relation Intelligence",
   description:
-    "Production-grade relation extraction, calibration and unseen-relation detection.",
+    "A production workspace for document relation intelligence, open-set prediction and review-ready evidence.",
 };
 
 export default function RootLayout({
