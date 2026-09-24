@@ -39,21 +39,68 @@ class HeuristicEntityExtractor:
         (
             (?:[A-Z][A-Za-zÀ-ÖØ-öø-ÿ0-9'’.-]{1,})
             (?:
-                \s+
+                [ \t]+
                 (?:
                     [A-Z][A-Za-zÀ-ÖØ-öø-ÿ0-9'’.-]{1,}
-                    |(?:de|du|des|la|le|of|the|and|&|University|Institute|Inc|Ltd|Corp)
+                    |(?:(?:de|du|des|la|le|of|the|and|University|Institute|Inc|Ltd|Corp)\b|&)
                 )
             ){0,5}
             |
             (?:[A-Z]{2,}(?:[-&][A-Z]{2,})*)
         )
+        (?![\w])
         """,
         re.VERBOSE,
     )
 
-    _sentence_boundary = re.compile(r"(?<=[.!?])(?:\s+|$)")
+    _sentence_boundary = re.compile(r"(?<=[.!?])(?:[ \t]+|$)|\n+")
     _trailing_sentence_punctuation = ".,;:!?"
+    _sentence_start_entity_verbs = frozenset(
+        {
+            "acquired",
+            "based",
+            "born",
+            "founded",
+            "had",
+            "has",
+            "have",
+            "is",
+            "joined",
+            "lived",
+            "lives",
+            "married",
+            "operated",
+            "operates",
+            "owned",
+            "owns",
+            "studied",
+            "was",
+            "were",
+            "worked",
+            "works",
+        }
+    )
+
+    @classmethod
+    def _keep_single_token(
+        cls,
+        raw: str,
+        segment: str,
+        start: int,
+        end: int,
+    ) -> bool:
+        """Reject sentence-initial layout words while keeping plausible entities."""
+        if " " in raw or "\t" in raw:
+            return True
+
+        if re.search(r"\w", segment[:start]):
+            return True
+
+        following = segment[end:]
+        next_word = re.match(r"[ \t]+([A-Za-zÀ-ÖØ-öø-ÿ'’-]+)", following)
+        if next_word is None:
+            return False
+        return next_word.group(1).casefold() in cls._sentence_start_entity_verbs
 
     @property
     def model_id(self) -> str:
@@ -81,7 +128,12 @@ class HeuristicEntityExtractor:
                 if len(raw) < 2:
                     continue
 
-                start = segment_start + match.start(1)
+                local_start = match.start(1)
+                local_end = local_start + len(raw)
+                if not self._keep_single_token(raw, segment, local_start, local_end):
+                    continue
+
+                start = segment_start + local_start
                 end = start + len(raw)
                 key = (start, end)
                 if key in seen:
