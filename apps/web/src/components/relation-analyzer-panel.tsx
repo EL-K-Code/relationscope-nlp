@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   MessageSquareText,
   Network,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -78,6 +79,32 @@ export function RelationAnalyzerPanel({
     [explanation],
   );
 
+  const matchedCorrection = useMemo(() => {
+    const normalized = correction.trim().toLowerCase();
+    if (!normalized) return null;
+    return (
+      relations.find(
+        (item) => item.relation_name.toLowerCase() === normalized,
+      ) ?? null
+    );
+  }, [correction, relations]);
+
+  function clearAnalysisState() {
+    setPrediction(null);
+    setOpenSet(null);
+    setExplanation(null);
+    setError(null);
+    setCorrection("");
+    setFeedbackStatus(null);
+  }
+
+  function startNewAnalysis() {
+    clearAnalysisState();
+    setText("");
+    setHeadText("");
+    setTailText("");
+  }
+
   async function runExtraction() {
     setBusy(true);
     setError(null);
@@ -134,20 +161,29 @@ export function RelationAnalyzerPanel({
         },
         verdict,
         corrected_relation_id:
-          verdict === "correct"
-            ? relations.find(
-                (item) =>
-                  item.relation_name.toLowerCase() === correction.trim().toLowerCase(),
-              )?.relation_id ?? null
-            : null,
+          verdict === "correct" ? matchedCorrection?.relation_id ?? null : null,
         corrected_relation_name: verdict === "correct" ? correction.trim() : null,
         consent_to_store_text: feedbackConsent,
       });
-      setFeedbackStatus(
-        response.stored_text
-          ? "Feedback saved with training-data consent."
-          : "Feedback saved without storing raw text.",
-      );
+      if (verdict === "correct" && !matchedCorrection) {
+        setFeedbackStatus(
+          response.stored_text
+            ? "New relation suggestion saved with consented text for ontology review. It is not added to the current model automatically."
+            : "New relation suggestion saved for ontology review without raw text. It is not added to the current model automatically.",
+        );
+      } else if (verdict === "correct") {
+        setFeedbackStatus(
+          response.stored_text
+            ? "Correction saved with consented text. This known relation can enter the reviewed retraining workflow."
+            : "Correction saved without raw text. The label is recorded, but the example cannot be reused as training text.",
+        );
+      } else {
+        setFeedbackStatus(
+          response.stored_text
+            ? "Feedback saved with training-data consent."
+            : "Feedback saved without storing raw text.",
+        );
+      }
     } catch (reason) {
       setFeedbackStatus(
         reason instanceof Error ? reason.message : "Feedback could not be saved.",
@@ -171,17 +207,36 @@ export function RelationAnalyzerPanel({
 
           <label className="field">
             <span>Sentence</span>
-            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={7} />
+            <textarea
+              value={text}
+              onChange={(event) => {
+                clearAnalysisState();
+                setText(event.target.value);
+              }}
+              rows={7}
+            />
           </label>
 
           <div className="fieldGrid">
             <label className="field">
               <span>Head entity</span>
-              <input value={headText} onChange={(event) => setHeadText(event.target.value)} />
+              <input
+                value={headText}
+                onChange={(event) => {
+                  clearAnalysisState();
+                  setHeadText(event.target.value);
+                }}
+              />
             </label>
             <label className="field">
               <span>Tail entity</span>
-              <input value={tailText} onChange={(event) => setTailText(event.target.value)} />
+              <input
+                value={tailText}
+                onChange={(event) => {
+                  clearAnalysisState();
+                  setTailText(event.target.value);
+                }}
+              />
             </label>
           </div>
 
@@ -198,7 +253,10 @@ export function RelationAnalyzerPanel({
                 <button
                   key={item}
                   className={profile === item ? "active" : ""}
-                  onClick={() => setProfile(item)}
+                  onClick={() => {
+                    clearAnalysisState();
+                    setProfile(item);
+                  }}
                   type="button"
                 >
                   {PROFILE_METRICS[item].shortLabel}
@@ -229,7 +287,17 @@ export function RelationAnalyzerPanel({
               <span className="sectionKicker">DECISION</span>
               <h2>Model output</h2>
             </div>
-            <Activity size={19} />
+            {prediction ? (
+              <button
+                className="textButton resetAction"
+                type="button"
+                onClick={startNewAnalysis}
+              >
+                <RotateCcw size={14} /> New analysis
+              </button>
+            ) : (
+              <Activity size={19} />
+            )}
           </div>
 
           {!prediction || !top ? (
@@ -345,12 +413,18 @@ export function RelationAnalyzerPanel({
                   Mark unknown
                 </button>
               </div>
+              <p className="feedbackHelper">
+                Correct the relation label here — the head and tail entities stay unchanged.
+              </p>
               <div className="correctionInline">
                 <input
                   list="relation-catalog"
-                  placeholder="Correct relation"
+                  placeholder="Correct relation or suggest a new one"
                   value={correction}
-                  onChange={(event) => setCorrection(event.target.value)}
+                  onChange={(event) => {
+                    setCorrection(event.target.value);
+                    setFeedbackStatus(null);
+                  }}
                 />
                 <datalist id="relation-catalog">
                   {relations.map((item) => (
@@ -361,6 +435,19 @@ export function RelationAnalyzerPanel({
                   Save
                 </button>
               </div>
+              {correction.trim() && (
+                <div
+                  className={
+                    matchedCorrection
+                      ? "correctionHint known"
+                      : "correctionHint suggestion"
+                  }
+                >
+                  {matchedCorrection
+                    ? `Known catalog relation · ${matchedCorrection.relation_id} · eligible for reviewed retraining when text consent is enabled.`
+                    : "New relation suggestion · recorded for ontology review, but not trainable by the current 56-class model."}
+                </div>
+              )
               <label className="privacyToggle">
                 <input
                   type="checkbox"
