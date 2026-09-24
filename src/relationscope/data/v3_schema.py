@@ -8,7 +8,6 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from relationscope.data.schema import EntitySpan, OpenSetProfile, Prediction
-from relationscope.data.v2_schema import FeedbackPredictionSnapshot
 
 
 class DocumentAnalyzeRequest(BaseModel):
