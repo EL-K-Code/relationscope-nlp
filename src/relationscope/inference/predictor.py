@@ -548,7 +548,11 @@ class RelationPredictor:
         groups: list[tuple[str, int, int, list[int]]] = []
         for match in re.finditer(r"\S+", model_text):
             word = match.group(0)
-            if word in ENTITY_MARKERS:
+            # Entity markers can be adjacent to punctuation in marked text
+            # (for example "[/TAIL]."). Exclude any lexical chunk that
+            # contains a control marker so the explanation never attributes
+            # model influence to RelationScope's own structural tokens.
+            if any(marker in word for marker in ENTITY_MARKERS):
                 continue
 
             positions: list[int] = []
