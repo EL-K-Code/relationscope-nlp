@@ -173,3 +173,72 @@ For the current Cloud Build workflow used during development:
 7. smoke-test the public web proxy and private service-to-service path.
 
 Do not deploy V2 by applying Terraform with new infrastructure while still pointing at an untested V2 image. Build and validate the images first, then apply the infrastructure and image update together.
+
+
+## V3 optional challenger service
+
+V3 can provision a second private Cloud Run API for safe canary evaluation.
+
+Example:
+
+```hcl
+enable_challenger       = true
+challenger_api_image    = "europe-west1-docker.pkg.dev/PROJECT/relationscope/api@sha256:..."
+challenger_model_prefix = "models/releases/modernbert-open-set-v2.0"
+canary_percent          = 5
+```
+
+The challenger:
+
+- reuses the API service account;
+- reads an immutable release prefix rather than `models/current`;
+- writes telemetry to the same private operations bucket;
+- is invokable by the public web service account and the dedicated Cloud Tasks caller only;
+- is tagged in telemetry as `RELATIONSCOPE_DEPLOYMENT_VARIANT=challenger`.
+
+The champion receives `RELATIONSCOPE_DEPLOYMENT_VARIANT=champion`.
+
+The public web service receives both private service URLs/audiences and performs sticky deterministic routing only for eligible inference endpoints.
+
+Keep:
+
+```hcl
+enable_challenger = false
+canary_percent    = 0
+```
+
+until a candidate has passed the offline promotion gate.
+
+## V3 document entity model
+
+`ner_model` is optional:
+
+```hcl
+ner_model = ""
+```
+
+Empty means the deterministic built-in entity heuristic is used.
+
+A configured value is passed to the API as `RELATIONSCOPE_NER_MODEL` and loaded as a Hugging Face/local token-classification model on the first document-analysis request.
+
+For a serious production rollout, pin and review the exact NER artifact instead of depending on an unversioned remote model name.
+
+## V3 deployment sequence
+
+Recommended rollout:
+
+1. build immutable V3 API and web images;
+2. run Python, web and Terraform CI;
+3. run a full Terraform plan with `enable_challenger=false`;
+4. deploy champion-only V3;
+5. smoke-test single inference, word influence, document upload, learning summary and batch jobs;
+6. collect enough telemetry for drift windows;
+7. build a reviewed dataset snapshot;
+8. retrain/evaluate a challenger offline;
+9. run the promotion gate;
+10. register the candidate as an immutable model release;
+11. enable the challenger with a small canary percentage;
+12. compare champion/challenger telemetry;
+13. promote or roll back explicitly.
+
+Do not switch `models/current` merely because a challenger passed offline metrics. Canary behavior is a separate production validation stage.
