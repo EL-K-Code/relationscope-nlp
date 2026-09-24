@@ -1,7 +1,17 @@
 project_id        = "YOUR_GCP_PROJECT_ID"
 region            = "europe-west1"
-model_bucket_name = "YOUR_GLOBALLY_UNIQUE_RELATIONSCOPE_MODEL_BUCKET"\nops_bucket_name   = "YOUR_GLOBALLY_UNIQUE_RELATIONSCOPE_OPS_BUCKET"
+model_bucket_name = "YOUR_GLOBALLY_UNIQUE_RELATIONSCOPE_MODEL_BUCKET"
+ops_bucket_name   = "YOUR_GLOBALLY_UNIQUE_RELATIONSCOPE_OPS_BUCKET"
 cloud_build_submitter_member = "user:you@example.com"
 
 api_image = "europe-west1-docker.pkg.dev/YOUR_GCP_PROJECT_ID/relationscope/api:latest"
 web_image = "europe-west1-docker.pkg.dev/YOUR_GCP_PROJECT_ID/relationscope/web:latest"
+
+# Optional V3 document NER. Leave empty for deterministic heuristic extraction.
+ner_model = ""
+
+# Champion/challenger canary. Keep disabled until a challenger passes promotion gates.
+enable_challenger       = false
+challenger_api_image    = null
+challenger_model_prefix = "models/releases/modernbert-open-set-v1.1"
+canary_percent          = 0
