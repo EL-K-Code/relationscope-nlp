@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   FileText,
   Network,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
   UploadCloud,
@@ -46,6 +47,21 @@ export function DocumentIntelligencePanel() {
       result.relations[0]
     );
   }, [result, selectedEdgeId]);
+
+  function clearResultState() {
+    setResult(null);
+    setSelectedEdgeId(null);
+    setError(null);
+  }
+
+  function startNewAnalysis() {
+    clearResultState();
+    if (mode === "text") {
+      setText("");
+    } else {
+      setSelectedFile(null);
+    }
+  }
 
   async function runAnalysis() {
     setBusy(true);
@@ -97,14 +113,20 @@ export function DocumentIntelligencePanel() {
             <button
               type="button"
               className={mode === "text" ? "active" : ""}
-              onClick={() => setMode("text")}
+              onClick={() => {
+                clearResultState();
+                setMode("text");
+              }}
             >
               Paste text
             </button>
             <button
               type="button"
               className={mode === "file" ? "active" : ""}
-              onClick={() => setMode("file")}
+              onClick={() => {
+                clearResultState();
+                setMode("file");
+              }}
             >
               Upload file
             </button>
@@ -116,7 +138,10 @@ export function DocumentIntelligencePanel() {
             <span>Document text</span>
             <textarea
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                clearResultState();
+                setText(event.target.value);
+              }}
               rows={8}
               placeholder="Paste text to analyze…"
             />
@@ -124,10 +149,14 @@ export function DocumentIntelligencePanel() {
         ) : (
           <div className="dropzone documentDropzone">
             <input
+              key={selectedFile ? `${selectedFile.name}-${selectedFile.lastModified}` : "empty-file"}
               id="document-file"
               type="file"
               accept=".pdf,.txt,text/plain,application/pdf"
-              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                clearResultState();
+                setSelectedFile(event.target.files?.[0] ?? null);
+              }}
             />
             <label htmlFor="document-file">
               <span className="dropzoneIcon"><UploadCloud size={25} /></span>
@@ -152,7 +181,10 @@ export function DocumentIntelligencePanel() {
                     key={item}
                     type="button"
                     className={profile === item ? "active" : ""}
-                    onClick={() => setProfile(item)}
+                    onClick={() => {
+                      clearResultState();
+                      setProfile(item);
+                    }}
                   >
                     {item === "high_coverage"
                       ? "Coverage"
@@ -169,7 +201,10 @@ export function DocumentIntelligencePanel() {
             <input
               type="checkbox"
               checked={includeUnknown}
-              onChange={(event) => setIncludeUnknown(event.target.checked)}
+              onChange={(event) => {
+                clearResultState();
+                setIncludeUnknown(event.target.checked);
+              }}
             />
             <span>Show unknown relations</span>
           </label>
@@ -178,7 +213,10 @@ export function DocumentIntelligencePanel() {
             <input
               type="checkbox"
               checked={consent}
-              onChange={(event) => setConsent(event.target.checked)}
+              onChange={(event) => {
+                clearResultState();
+                setConsent(event.target.checked);
+              }}
             />
             <span>Allow review queue</span>
           </label>
@@ -222,6 +260,13 @@ export function DocumentIntelligencePanel() {
               <div><span>Review</span><strong>{result.review_candidates}</strong></div>
               <div><span>Latency</span><strong>{result.latency_ms.toFixed(0)} ms</strong></div>
             </div>
+            <button
+              className="button buttonSecondary restartButton"
+              type="button"
+              onClick={startNewAnalysis}
+            >
+              <RotateCcw size={14} /> New analysis
+            </button>
           </section>
 
           <section className="resultWorkbench">

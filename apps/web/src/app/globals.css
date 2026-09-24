@@ -3064,3 +3064,47 @@ table tr:last-child td {
     flex: 1;
   }
 }
+
+
+/* ---------- Analysis reset & feedback clarity ---------- */
+
+.resetAction {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.restartButton {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.feedbackHelper {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.correctionHint {
+  margin-top: 7px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.correctionHint.known {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.correctionHint.suggestion {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+@media (max-width: 720px) {
+  .analysisSummary .restartButton {
+    width: 100%;
+  }
+}
