@@ -207,8 +207,12 @@ def test_active_learning_review_becomes_versioned_dataset(
 
     assert jsonl_path.is_file()
     assert manifest_path.is_file()
-    assert manifest.record_count == 1
-    assert manifest.relation_counts["place of birth"] == 1
+    # The active-learning item is the reverse directed pair
+    # (Warsaw -> Marie Curie), while feedback confirms
+    # (Marie Curie -> Warsaw). Relation extraction is directional, so these
+    # are two distinct supervised examples and must not be deduplicated.
+    assert manifest.record_count == 2
+    assert manifest.relation_counts["place of birth"] == 2
     assert len(manifest.sha256) == 64
 
 
