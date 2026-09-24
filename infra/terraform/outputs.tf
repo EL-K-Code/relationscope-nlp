@@ -26,3 +26,11 @@ output "batch_task_queue" {
   value       = google_cloud_tasks_queue.batch.name
   description = "Cloud Tasks queue used by v2 asynchronous batch inference."
 }
+
+
+output "challenger_api_url" {
+  value = var.enable_challenger ? (
+    google_cloud_run_v2_service.api_challenger[0].uri
+  ) : null
+  description = "Optional private V3 challenger API URL."
+}
