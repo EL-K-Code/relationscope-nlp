@@ -19,7 +19,10 @@ from relationscope.data.v3_schema import (
     ReviewDecisionRequest,
 )
 from relationscope.document.analyzer import DocumentAnalyzer, split_sentences
-from relationscope.document.entity_extractor import EntityMentionCandidate
+from relationscope.document.entity_extractor import (
+    EntityMentionCandidate,
+    HeuristicEntityExtractor,
+)
 from relationscope.ops.active_learning import ActiveLearningService
 from relationscope.ops.drift import DriftService
 from relationscope.ops.feedback import FeedbackService
@@ -112,6 +115,26 @@ def test_sentence_split_preserves_offsets() -> None:
         "She later worked in Paris.",
     ]
     assert text[sentences[1].start : sentences[1].end] == sentences[1].text
+
+
+def test_heuristic_ner_does_not_cross_sentence_boundaries() -> None:
+    text = (
+        "Marie Curie was born in Warsaw. "
+        "Marie Curie studied at the University of Paris. "
+        "Albert Einstein worked at Princeton University."
+    )
+    entities = HeuristicEntityExtractor().extract(text)
+
+    assert [item.text for item in entities] == [
+        "Marie Curie",
+        "Warsaw",
+        "Marie Curie",
+        "University of Paris",
+        "Albert Einstein",
+        "Princeton University",
+    ]
+    assert all(text[item.start : item.end] == item.text for item in entities)
+    assert all(not item.text.endswith((".", "!", "?")) for item in entities)
 
 
 def test_document_analyzer_builds_graph_and_queues_uncertain_pair(
